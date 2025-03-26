@@ -8615,7 +8615,7 @@ def seekPlacementOfLineageRefs(tree, t1, lineageRefData, numCores):
 
 			# append the lineage assignment into the selected node
 			lineageRootPosition = None
-			if appendingBlength <= lineageRefsThresh:
+			if appendingBlength < lineageRefsThresh:
 				# if topBlength == 0, we already record the parent instead of the original placement, so no further processing needed
 				#if not topBlength and up[selectedPlacement]:
 				#	selectedPlacement = up[selectedPlacement]
@@ -8691,7 +8691,7 @@ def defineSupportedToLineages(tree):
 		plausiblePlacements, lineageRootPosition = lineagePlacements[key]
 		for placement, support, optimizedBlengths in plausiblePlacements:
 			topBlength, bottomBlength, appendingBlength = optimizedBlengths
-			if appendingBlength <= lineageRefsThresh:
+			if appendingBlength < lineageRefsThresh:
 				tree.supportToLineages[placement].append([key, support])
 	return tree
 
