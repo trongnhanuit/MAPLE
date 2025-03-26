@@ -137,6 +137,7 @@ refFile=args.reference
 lineageRefs=args.lineageRefs
 lineageRefsThresh = args.lineageRefsThresh
 allowMultiLineagesPerNode = args.allowMultiLineagesPerNode
+performLineageAssignmentByRefPlacement = (lineageRefs != "")
 allowedFails=args.allowedFails
 allowedFailsTopology=args.allowedFailsTopology
 model=args.model
@@ -169,8 +170,6 @@ minSamplingYear=args.minSamplingYear
 maxSamplingYear=args.maxSamplingYear
 timeProbThreshold=args.timeProbThreshold
 minNumSamplesForMutRate=args.minNumSamplesForMutRate
-if lineageRefs != "":
-	performLineageAssignmentByRefPlacement = True
 if datesFile!=None:
 	doTimeTree=True
 else:
