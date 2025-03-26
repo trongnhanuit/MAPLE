@@ -82,6 +82,11 @@ parser.add_argument('--assignmentFileCSV',default="", help='give path and name t
 parser.add_argument('--assignmentFile',default="", help='Like --assignmentFileCSV but expects an alignment file in any format (as long as sequence names follow a > character as in Fasta and Maple formats).')
 parser.add_argument('--inputNexusTree',default="", help='input nexus tree file name; this is optional, and is used for lineage assignment. The nexus tree is supposed to be the output of MAPLE, so that it has alternativePlacements annotation to represent topological uncertainty.')
 parser.add_argument('--reRoot',default="", help='Re-root the input newick tree so that the specified sample/lineage is root. By default, no specified lineage/sample, so no rerooting.')
+#lineage assignment from reference genomes which are not in the tree yet
+parser.add_argument('--lineageRefs',default="", help='give path and name to an alignment file (in MAPLE format) containing reference genomes, each represents one lineage. When using this option, option --inputTree should also be used. Then MAPLE will find the best placement for each lineage reference (note that these lineage references do not exist in the input tree). Each sample is assigned a lineage same as its closest reference parent.')
+parser.add_argument('--lineageRefsThresh',default=1.0, help='The threshold (in term of #mutation) to check whether a reference lineage genome could be considered as the parent of a subtree. Default: 1 mutation', type = float)
+parser.add_argument('--allowMultiLineagesPerNode', help='When a node is selected as the best placements for multiple lineages, whether we allow assigning all of these lineages (or only the closest lineage) to the subtree. Default: assigning the closet lineage', action="store_true")
+
 #rarer options
 parser.add_argument("--defaultBLen",help="Default length of branches, for example when the input tree has no branch length information.",  type=float, default=0.000033)
 parser.add_argument("--normalizeInputBLen",help="For the case the input tree has branch lengths expressed not in a likelihood fashion (that is, expected number of substitutions per site), then multiply the input branch lengths by this factor. Particularly useful when using parsimony-based input trees.",  type=float, default=1.0)
@@ -129,6 +134,9 @@ debugging=args.debugging
 inputFile=args.input
 outputFile=args.output
 refFile=args.reference
+lineageRefs=args.lineageRefs
+lineageRefsThresh = args.lineageRefsThresh
+allowMultiLineagesPerNode = args.allowMultiLineagesPerNode
 allowedFails=args.allowedFails
 allowedFailsTopology=args.allowedFailsTopology
 model=args.model
@@ -161,6 +169,8 @@ minSamplingYear=args.minSamplingYear
 maxSamplingYear=args.maxSamplingYear
 timeProbThreshold=args.timeProbThreshold
 minNumSamplesForMutRate=args.minNumSamplesForMutRate
+if lineageRefs != "":
+	performLineageAssignmentByRefPlacement = True
 if datesFile!=None:
 	doTimeTree=True
 else:
@@ -275,7 +285,7 @@ minMutProb=args.minMutProb
 doNotImproveTopology=args.doNotImproveTopology
 keepInputIQtreeSupports=args.keepInputIQtreeSupports
 aBayesPlusOn=False
-if aBayesPlus or doTimeTree:
+if aBayesPlus or doTimeTree or performLineageAssignmentByRefPlacement:
 	from math import exp
 
 warnedBLen=[False]
