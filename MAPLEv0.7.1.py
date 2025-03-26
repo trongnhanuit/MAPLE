@@ -2814,7 +2814,7 @@ if __name__ == "__main__":
 	#TODO
 	#TODO
 	#create newick string of a given tree (input node is assumed to be the root) - with option "binary" the generated tree is binary (polytomies are represented with branches of length 0).
-	def createNewick(tree,node,binary=True,namesInTree=None,includeMinorSeqs=True,estimateMAT=estimateMAT,networkOutput=networkOutput,aBayesPlusOn=aBayesPlusOn):
+	def createNewick(tree,node,binary=True,namesInTree=None,includeMinorSeqs=True,estimateMAT=estimateMAT,networkOutput=networkOutput,aBayesPlusOn=aBayesPlusOn, performLineageAssignmentByRefPlacement= performLineageAssignmentByRefPlacement):
 		nextNode=node
 		stringList=[]
 		direction=0
@@ -2824,6 +2824,7 @@ if __name__ == "__main__":
 		dist=tree.dist
 		name=tree.name
 		minorSequences=tree.minorSequences
+		writeLineageAssignment = performLineageAssignment or performLineageAssignmentByRefPlacement
 		while nextNode!=None:
 			if children[nextNode]:
 				if direction==0:
@@ -2843,7 +2844,7 @@ if __name__ == "__main__":
 								stringList.append(")")
 							else:
 								stringList.append(")"+namesInTree[name[nextNode]])
-						if aBayesPlusOn or estimateMAT or performLineageAssignment:
+						if aBayesPlusOn or estimateMAT or writeLineageAssignment:
 							stringList.append(stringForNode(tree,nextNode,"",dist[nextNode],estimateMAT=estimateMAT,networkOutput=networkOutput,aBayesPlusOn=aBayesPlusOn,namesInTree=namesInTree))
 						if dist[nextNode]:
 							stringList.append(":"+str(dist[nextNode]))
@@ -2861,7 +2862,7 @@ if __name__ == "__main__":
 					if binary:
 						for i in minorSequences[nextNode]:
 							stringList.append("(")
-						if supportForIdenticalSequences or performLineageAssignment:
+						if supportForIdenticalSequences or writeLineageAssignment:
 							if namesInTree==None:
 								stringList.append(stringForNode(tree,nextNode,name[nextNode],0.0,estimateMAT=estimateMAT,networkOutput=networkOutput,aBayesPlusOn=aBayesPlusOn,namesInTree=namesInTree))
 							else:
@@ -2875,7 +2876,7 @@ if __name__ == "__main__":
 						stringList.append(":")
 						for s2 in minorSequences[nextNode][:-1]:
 							stringList.append("0.0,")
-							if supportForIdenticalSequences or performLineageAssignment:
+							if supportForIdenticalSequences or writeLineageAssignment:
 								if namesInTree==None:
 									stringList.append(stringForNode(tree,nextNode,s2,0.0,estimateMAT=estimateMAT,networkOutput=networkOutput,aBayesPlusOn=aBayesPlusOn,namesInTree=namesInTree))
 								else:
@@ -2887,7 +2888,7 @@ if __name__ == "__main__":
 									stringList.append(namesInTree[s2])
 							stringList.append(":0.0):")
 						stringList.append("0.0,")
-						if supportForIdenticalSequences or performLineageAssignment:
+						if supportForIdenticalSequences or writeLineageAssignment:
 							if namesInTree==None:
 								stringList.append(stringForNode(tree,nextNode,minorSequences[nextNode][-1],0.0,estimateMAT=estimateMAT,networkOutput=networkOutput,aBayesPlusOn=aBayesPlusOn,namesInTree=namesInTree))
 							else:
@@ -2904,7 +2905,7 @@ if __name__ == "__main__":
 					else:
 						if dist[nextNode] or up[nextNode]==None:
 							stringList.append("(")
-						if supportForIdenticalSequences or performLineageAssignment:
+						if supportForIdenticalSequences or writeLineageAssignment:
 							if namesInTree==None:
 								stringList.append(stringForNode(tree,nextNode,name[nextNode],0.0,estimateMAT=estimateMAT,networkOutput=networkOutput,aBayesPlusOn=aBayesPlusOn,namesInTree=namesInTree))
 							else:
@@ -2918,7 +2919,7 @@ if __name__ == "__main__":
 						stringList.append(":0.0")
 						for s2 in minorSequences[nextNode]:
 							stringList.append(",")
-							if supportForIdenticalSequences or performLineageAssignment:
+							if supportForIdenticalSequences or writeLineageAssignment:
 								if namesInTree==None:
 									stringList.append(stringForNode(tree,nextNode,s2,0.0,estimateMAT=estimateMAT,networkOutput=networkOutput,aBayesPlusOn=aBayesPlusOn,namesInTree=namesInTree))
 								else:
@@ -2940,7 +2941,7 @@ if __name__ == "__main__":
 					else:
 						if name[nextNode]!="":
 							stringList.append(namesInTree[name[nextNode]])
-				if aBayesPlusOn or estimateMAT or performLineageAssignment:
+				if aBayesPlusOn or estimateMAT or writeLineageAssignment:
 					stringList.append(stringForNode(tree,nextNode,"",dist[nextNode],estimateMAT=estimateMAT,networkOutput=networkOutput,aBayesPlusOn=aBayesPlusOn,namesInTree=namesInTree))
 				if dist[nextNode]:
 					stringList.append(":"+str(dist[nextNode]))
