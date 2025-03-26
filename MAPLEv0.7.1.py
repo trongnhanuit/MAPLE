@@ -2671,11 +2671,12 @@ if __name__ == "__main__":
 	#TODO
 	#TODO
 	#generate the string corresponding to a node, taking into account support measures and other possible node features.
-	def stringForNode(tree,nextNode,nameNode,distB,estimateMAT=estimateMAT,networkOutput=networkOutput,aBayesPlusOn=aBayesPlusOn,namesInTree=None):
+	def stringForNode(tree,nextNode,nameNode,distB,estimateMAT=estimateMAT,networkOutput=networkOutput,aBayesPlusOn=aBayesPlusOn,namesInTree=None, performLineageAssignmentByRefPlacement = performLineageAssignmentByRefPlacement):
 		children=tree.children
 		up=tree.up
 		name=tree.name
 		aBayesPlusActive=False
+		writeLineageAssignment = performLineageAssignment or performLineageAssignmentByRefPlacement
 		if aBayesPlusOn and hasattr(tree, 'alternativePlacements') and hasattr(tree, 'support'):
 			aBayesPlusActive=True
 			alternativePlacements=tree.alternativePlacements
@@ -2693,7 +2694,7 @@ if __name__ == "__main__":
 			if usingErrorRate and hasattr(tree, 'errors'):
 				errorsOn=True
 				errors=tree.errors
-		if performLineageAssignment:
+		if writeLineageAssignment:
 			lineage=tree.lineage
 			lineages=tree.lineages
 		printIQtreeSupportForNode=False
@@ -2785,7 +2786,7 @@ if __name__ == "__main__":
 				strings.append("rootSupport="+str(rootSupport[nextNode]))
 			if printIQtreeSupportForNode:
 				strings.append("IQsupport="+str(IQsupport[nextNode]))
-		elif performLineageAssignment and (lineage[nextNode]!=None or lineages[nextNode]!=None):
+		elif writeLineageAssignment and (lineage[nextNode]!=None or lineages[nextNode]!=None):
 			if lineage[nextNode]!=None:
 				strings.append("lineage="+lineage[nextNode])
 			if lineages[nextNode]!=None and lineages:
