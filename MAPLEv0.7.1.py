@@ -3557,6 +3557,43 @@ if __name__ == "__main__":
 	else:
 		ref=collectReference(refFile)
 		data=readConciseAlignment(inputFile, extractReference=False, ref=ref) #,extractNames=extractNamesFlag
+
+	# read lineage references
+	if performLineageAssignmentByRefPlacement:
+		# don't allow running two lineage assignment methods at the same time
+		if assignmentFile != "" and assignmentFileCSV != "":
+			print("Please only use one among these options: --assignmentFile or --assignmentFileCSV or --lineageRefs.")
+			raise Exception("exit")
+
+		# make sure users specify a tree
+		if (not os.path.isfile(inputTree)):
+			print(
+				"Input tree in newick format " + inputTree + " not found, quitting MAPLE lineage assignment. Use option --inputTree to specify a valid input tree file.")
+			raise Exception("exit")
+
+		# check if file exits
+		if not os.path.isfile(lineageRefs):
+			print(
+				"Lineage reference file in Maple format " + lineageRefs + " not found.")
+			raise Exception("exit")
+
+		# don't allow rerooting the tree -> the program terminates immediately after lineage assignment
+		# doNotReroot = True
+
+		# read the lineage reference genomes
+		if refFile == "":
+			ref2, lineageRefData = readConciseAlignment(lineageRefs)
+		else:
+			ref2 = collectReference(refFile)
+			lineageRefData = readConciseAlignment(lineageRefs, extractReference=False, ref=ref2)
+
+		# make sure lineageRefs uses the same ref genome with the input alignment
+		if ref2 != ref:
+			refSrcFile = refFile
+			if refSrcFile == "":
+				refSrcFile = inputFile
+			print("Reference genome in ", lineageRefs, " is different from that of ", refSrcFile)
+			raise Exception("exit")
 else:
 	if refFile=="":
 		ref=readConciseAlignment(inputFile,onlyRef=True) #extractNames=extractNamesFlag
@@ -3572,6 +3609,7 @@ thresholdLogLKtopology*=logLRef
 thresholdLogLK*=logLRef
 thresholdLogLKtopologyInitial*=logLRef
 effectivelyNon0BLen=1.0/(10*lRef)
+lineageRefsThresh /= lRef
 oneMutBLen=1.0/lRef
 minBLenSensitivity*=oneMutBLen
 if errorRateInitial:
