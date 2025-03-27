@@ -8236,12 +8236,12 @@ if __name__ == "__main__":
 					# a placement at node X with bestTopLength = 0 could be presented by another placement:
 					# at the parent of X with bestBottomLength = 0
 					# or at the sibling of X with bestTopLength = 0
-					if (not bestTopLength):
+					if bestTopLength <= effectivelyNon0BLen:
 						differentNode = False
-					if dist[t1] <= effectivelyNon0BLen:
+					if dist[t1] <= effectivelyNon0BLen and up[up[t1]] != None:
 						differentNode = False
 					# check if this is a root placement
-					if (not rootAlreadyConsidered) and (not bestTopLength):
+					if (not rootAlreadyConsidered) and (bestTopLength <= effectivelyNon0BLen):
 						topNode = up[t1]
 						while (dist[topNode] <= effectivelyNon0BLen) and (up[topNode] != None):
 							topNode = up[topNode]
@@ -8284,10 +8284,10 @@ if __name__ == "__main__":
 				listOfProbableNodes.append(bestNode)
 				listOfOptBlengths.append(bestBranchLengths)
 
-			# Loop over all placements, if topBlength == 0, record the parent node instead of the original one
+			# Loop over all placements, if topBlength <= effectivelyNon0BLen, record the parent node instead of the original one
 			for i in range(len(listOfOptBlengths)):
 				topBlength, bottomBlength, appendingBlength = listOfOptBlengths[i]
-				if not topBlength:
+				if topBlength <= effectivelyNon0BLen:
 					topNode = listOfProbableNodes[i]
 					# go to the top of the polytomy
 					while (dist[topNode] <= effectivelyNon0BLen) and (up[topNode] != None):
@@ -11343,8 +11343,8 @@ if __name__ == "__main__":
 
 	# seek placements for lineage reference genomes
 	def seekPlacementOfLineageRefs(tree, t1, lineageRefData, numCores):
-		dist = tree.dist
-		up = tree.up
+		#dist = tree.dist
+		#up = tree.up
 		# create a map from a lineage to its possible placements
 		tree.lineagePlacements = {}
 		lineageRefNames = list(lineageRefData.keys())
