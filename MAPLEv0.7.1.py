@@ -3560,6 +3560,8 @@ if __name__ == "__main__":
 
 	# read lineage references
 	if performLineageAssignmentByRefPlacement:
+		from joblib import Parallel, delayed
+
 		# don't allow running two lineage assignment methods at the same time
 		if assignmentFile != "" and assignmentFileCSV != "":
 			print("Please only use one among these options: --assignmentFile or --assignmentFileCSV or --lineageRefs.")
@@ -8302,7 +8304,7 @@ if __name__ == "__main__":
 			# calculate support(s) of possible placements
 			totSupport = 0
 			for i in range(len(listofLKcosts)):
-				listofLKcosts[i] = math.exp(listofLKcosts[i])
+				listofLKcosts[i] = exp(listofLKcosts[i])
 				totSupport += listofLKcosts[i]
 
 			possiblePlacements = []
