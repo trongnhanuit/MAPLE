@@ -7980,7 +7980,7 @@ if __name__ == "__main__":
 	#TODO function to find the best node in the tree where to append the new sample; traverses the tree and tries to append the sample at each node and mid-branch nodes, 
 	# but stops traversing when certain criteria are met
 	#TODO TODO TODO test changes
-	def findBestParentForNewSample(tree,root,diffs,sample,diffsTime=None):
+	def findBestParentForNewSample(tree,root,diffs,sample,computePlacementSupportOnly, diffsTime=None):
 		up=tree.up
 		children=tree.children
 		probVectUpRight=tree.probVectUpRight
@@ -8013,7 +8013,8 @@ if __name__ == "__main__":
 				comparison=isMinorSequence(probVect[root],diffs)
 				if doTimeTree:
 					comparison2=isMinorDate(probVectTime[root],diffsTime)
-			if comparison==1 and ((not doTimeTree) or (comparison2==1)):
+			# if we need to compute the placement support only, we have to process further and can't add the new sample as a minor sequence
+			if comparison==1 and ((not doTimeTree) or (comparison2==1)) and (not computePlacementSupportOnly):
 				minorSequences[root].append(sample)
 				if HnZ:
 					nDesc0[root]+=1
@@ -8054,7 +8055,8 @@ if __name__ == "__main__":
 					comparison=isMinorSequence(probVect[t1],diffs)
 					if doTimeTree:
 						comparison2=isMinorDate(probVectTime[t1],diffsTime)
-				if comparison==1 and ((not doTimeTree) or (comparison2==1)):
+				# if we need to compute the placement support only, we have to process further and can't add the new sample as a minor sequence
+				if comparison==1 and ((not doTimeTree) or (comparison2==1)) and (not computePlacementSupportOnly):
 					minorSequences[t1].append(sample)
 					if HnZ:
 						nDesc0[t1]+=1
@@ -8128,9 +8130,15 @@ if __name__ == "__main__":
 			bestBranchLengths=(dist[bestNode]/2,dist[bestNode]/2,oneMutBLen)
 		bestScore=bestLKdiff
 		compensanteForBranchLengthChange=True
+		if computePlacementSupportOnly:
+			listOfProbableNodes = []
+			listofLKcosts = []
+			rootAlreadyConsidered = False
+			listOfOptBlengths = []
+			placementAtRoot = None
 		for nodePair in bestNodes:
 			score=nodePair[1]
-			if score>=bestLKdiff-thresholdLogLKoptimization:
+			if (score>=bestLKdiff-thresholdLogLKoptimization) or (computePlacementSupportOnly and score>=bestLKdiff-thresholdLogLKoptimizationTopology):
 				node=nodePair[0]
 				#optimize branch lengths of appendage
 				if node==children[up[node]][0]:
@@ -8208,8 +8216,106 @@ if __name__ == "__main__":
 					bestScore=optimizedScore
 					bestBranchLengths=(bestTopLength,bestBottomLength,bestAppendingLength)
 					bestDiffs=diffs
+				if computePlacementSupportOnly:
+					t1 = node
+					# check that the placement location is effectively different from the original node
+					differentNode = True
+					# topNode=node
+					# if t1 == topNode:
+					#	differentNode = False
+					# if (not bestBottomLength):
+					#	while (dist[topNode] <= effectivelyNon0BLen) and (up[topNode] != None):
+					#		topNode = up[topNode]
+					#	if t1 == topNode:
+					#		differentNode = False
+					# if t1 == children[node][1 - child]:
+					#	differentNode = False
+					# check that placement is not redundant
+					# a placement at node X with bestTopLength = 0 could be presented by another placement:
+					# at the parent of X with bestBottomLength = 0
+					# or at the sibling of X with bestTopLength = 0
+					if (not bestTopLength):
+						differentNode = False
+					if dist[t1] <= effectivelyNon0BLen:
+						differentNode = False
+					# check if this is a root placement
+					if (not rootAlreadyConsidered) and (not bestTopLength):
+						topNode = up[t1]
+						while (dist[topNode] <= effectivelyNon0BLen) and (up[topNode] != None):
+							topNode = up[topNode]
+						if up[topNode] == None:
+							rootAlreadyConsidered = True
+							# listofLKcosts.append(optimizedScore)
+							# listOfProbableNodes.append(topNode)
+							# listOfOptBlengths.append((bestTopLength,bestBottomLength,bestAppendingLength))
+							# record the placement at root
+							placementAtRoot = (
+							topNode, optimizedScore, (bestTopLength, bestBottomLength, bestAppendingLength))
+					elif differentNode:  # add placement to the list of legit ones
+						listofLKcosts.append(optimizedScore)
+						listOfProbableNodes.append(t1)
+						listOfOptBlengths.append((bestTopLength, bestBottomLength, bestAppendingLength))
 
-		return bestNode, bestScore, bestBranchLengths, bestDiffs
+		if computePlacementSupportOnly:
+			# add the placement at root if no placements at any of its children has been recored
+			if placementAtRoot:
+				addPlacementAtRoot = True
+				if children[root]:
+					rootChild1 = children[root][0]
+					rootChild2 = children[root][1]
+					for placement in listOfProbableNodes:
+						if placement == rootChild1 or placement == rootChild2:
+							addPlacementAtRoot = False
+							break
+				# if no placements at any of its children has been recored
+				# add the placement at root
+				if addPlacementAtRoot:
+					t1, optimizedScore, bestBlengths = placementAtRoot
+					listofLKcosts.append(optimizedScore)
+					listOfProbableNodes.append(t1)
+					listOfOptBlengths.append(bestBlengths)
+
+			# make sure at least one placement was found
+			# because there are cases where all placements were considered as redundant
+			if len(listOfProbableNodes) == 0:
+				listofLKcosts.append(bestScore)
+				listOfProbableNodes.append(bestNode)
+				listOfOptBlengths.append(bestBranchLengths)
+
+			# Loop over all placements, if topBlength == 0, record the parent node instead of the original one
+			for i in range(len(listOfOptBlengths)):
+				topBlength, bottomBlength, appendingBlength = listOfOptBlengths[i]
+				if not topBlength:
+					topNode = listOfProbableNodes[i]
+					# go to the top of the polytomy
+					while (dist[topNode] <= effectivelyNon0BLen) and (up[topNode] != None):
+						topNode = up[topNode]
+					# go to the top of the polytomy of the parent node
+					if up[topNode] != None:
+						topNode = up[topNode]
+						while (dist[topNode] <= effectivelyNon0BLen) and (up[topNode] != None):
+							topNode = up[topNode]
+						# update the placement
+						listOfProbableNodes[i] = topNode
+						listOfOptBlengths[i] = dist[topNode], topBlength, appendingBlength
+
+			# calculate support(s) of possible placements
+			totSupport = 0
+			for i in range(len(listofLKcosts)):
+				listofLKcosts[i] = math.exp(listofLKcosts[i])
+				totSupport += listofLKcosts[i]
+
+			possiblePlacements = []
+			for i in range(len(listofLKcosts)):
+				listofLKcosts[i] = listofLKcosts[i] / totSupport
+			for i in range(len(listofLKcosts)):
+				if listofLKcosts[i] >= minBranchSupport:
+					possiblePlacements.append((listOfProbableNodes[i], listofLKcosts[i], listOfOptBlengths[i]))
+
+			# return possiblePlacements
+			return possiblePlacements
+		else:
+			return bestNode, bestScore, bestBranchLengths, bestDiffs
 
 
 	# Change the genome lists of the node and edescendants after making the node reference. Also change nDesc of the ancestor nodes.
