@@ -11207,6 +11207,97 @@ if __name__ == "__main__":
 		timeRecalculation=time()-start
 		print("Time to run initial tree EM estimation: "+str(timeRecalculation))
 
+	#generate the string corresponding to a line of the tsv file for use in Taxonium.
+	# If representative node is 0-dist, then its support is also the support of all represented nodes. If not, can we assume that the support of the represented nodes is 1.
+	# Includes support of represented nodes only if supportFor0Branches is true, otherwise smpty string.
+	def tsvForNode(tree,node,name,featureList,namesInTree,identicalTo=""):
+		dist=tree.dist
+		stringList=[name+"\t"]
+		if identicalTo!="":
+			stringList.append(identicalTo)
+		stringList.append("\t")
+		for feat in featureList:
+			if node!=None:
+				if hasattr(tree, feat):
+					feature=getattr(tree, feat)
+					if (feat=="support" or feat=="IQsupport") :
+						if feature[node]!=None:
+							if feat=="support":
+								if identicalTo!="":
+									if supportForIdenticalSequences:
+										if dist[node]<=effectivelyNon0BLen:
+											stringList.append(str(feature[node]))
+										else:
+											stringList.append("1.0")
+								else:
+									stringList.append(str(feature[node]))
+							else:
+								stringList.append(str(feature[node]))
+					#use this column to highlight which nodes could be placed (with probability above threshold) on the branch above the current node - used to highlight alternative placements of a given node on the tree.
+					elif feat=="supportTo" and identicalTo=="":
+						for iNode in range(len(feature[node])):
+							stringList.append(namesInTree[tree.name[feature[node][iNode][0]]]+":"+str(feature[node][iNode][1]))
+							if iNode<(len(feature[node])-1):
+								stringList.append(",")
+					elif feat=="mutationsInf" and identicalTo=="":
+						for iNode in range(len(feature[node])):
+							mutation=feature[node][iNode]
+							stringList.append(allelesListExt[mutation[0]]+str(mutation[1])+allelesListExt[mutation[2]]+":"+str(mutation[3]))
+							if iNode<(len(feature[node])-1):
+								stringList.append(",")
+					elif feat=="Ns":
+						if identicalTo=="" or supportFor0Branches:
+							for iNode in range(len(feature[node])):
+								mutation=feature[node][iNode]
+								if type(mutation)==int:
+									stringList.append(str(mutation))
+								else:
+									stringList.append(str(mutation[0])+"-"+str(mutation[1]))
+								if iNode<(len(feature[node])-1):
+									stringList.append(",")
+					elif feat=="errors":
+						for iNode in range(len(feature[node])):
+							mutation=feature[node][iNode]
+							stringList.append(allelesListExt[mutation[0]]+str(mutation[1])+allelesListExt[mutation[2]]+":"+str(mutation[3]))
+							if iNode<(len(feature[node])-1):
+								stringList.append(",")
+					elif feat=="lineage":
+						stringList.append(feature[node])
+					elif feat=="lineages":
+						for lineageName in feature[node].keys():
+							stringList.append(lineageName+":"+str(feature[node][lineageName]))
+							stringList.append(",")
+						stringList.pop()
+					elif feat=="rootSupport" and identicalTo=="":
+						if feature[node]!=None:
+							stringList.append(str(feature[node]))
+				# this column highlights nodes with support below threshold and with number of descendants above threshold
+				elif feat=="supportGroup":
+					if tree.support[node]!=None:
+						if tree.support[node]<0.9:
+							nDescString="nDesc<11_"
+							if identicalTo=="":
+								if tree.nDesc[node]>100000:
+									nDescString="nDesc>100000_"
+								elif tree.nDesc[node]>10000:
+									nDescString="nDesc>10000_"
+								elif tree.nDesc[node]>1000:
+									nDescString="nDesc>1000_"
+								elif tree.nDesc[node]>100:
+									nDescString="nDesc>100_"
+								elif tree.nDesc[node]>10:
+									nDescString="nDesc>10_"
+							if tree.support[node]<0.5:
+								nDescString+="support<0.5"
+							else:
+								nDescString+="support<0.9"
+						else:
+							nDescString=""
+						stringList.append(nDescString)
+			stringList.append("\t")
+		stringList[-1]="\n"
+		return "".join(stringList)
+
 	# initial EM round to estimate the time-scaled mutation rate
 	if doTimeTree and (numSamples>=minNumSamplesForMutRate):
 		start=time()
@@ -11558,98 +11649,6 @@ if __name__ == "__main__":
 	giveInternalNodeNames(tree,t1,namesInTree=namesInTree,replaceNames=False)
 	internalNodeNamesGiven=True
 	print(str(len(namesInTree))+" named nodes in the tree after assigning internal node names", flush=True)
-
-	#generate the string corresponding to a line of the tsv file for use in Taxonium.
-	# If representative node is 0-dist, then its support is also the support of all represented nodes. If not, can we assume that the support of the represented nodes is 1.
-	# Includes support of represented nodes only if supportFor0Branches is true, otherwise smpty string.
-	def tsvForNode(tree,node,name,featureList,namesInTree,identicalTo=""):
-		dist=tree.dist
-		stringList=[name+"\t"]
-		if identicalTo!="":
-			stringList.append(identicalTo)
-		stringList.append("\t")
-		for feat in featureList:
-			if node!=None:
-				if hasattr(tree, feat):
-					feature=getattr(tree, feat)
-					if (feat=="support" or feat=="IQsupport") :
-						if feature[node]!=None:
-							if feat=="support":
-								if identicalTo!="":
-									if supportForIdenticalSequences:
-										if dist[node]<=effectivelyNon0BLen:
-											stringList.append(str(feature[node]))
-										else:
-											stringList.append("1.0")
-								else:
-									stringList.append(str(feature[node]))
-							else:
-								stringList.append(str(feature[node]))
-					#use this column to highlight which nodes could be placed (with probability above threshold) on the branch above the current node - used to highlight alternative placements of a given node on the tree.
-					elif feat=="supportTo" and identicalTo=="":
-						for iNode in range(len(feature[node])):
-							stringList.append(namesInTree[tree.name[feature[node][iNode][0]]]+":"+str(feature[node][iNode][1]))
-							if iNode<(len(feature[node])-1):
-								stringList.append(",")
-					elif feat=="mutationsInf" and identicalTo=="":
-						for iNode in range(len(feature[node])):
-							mutation=feature[node][iNode]
-							stringList.append(allelesListExt[mutation[0]]+str(mutation[1])+allelesListExt[mutation[2]]+":"+str(mutation[3]))
-							if iNode<(len(feature[node])-1):
-								stringList.append(",")
-					elif feat=="Ns":
-						if identicalTo=="" or supportFor0Branches:
-							for iNode in range(len(feature[node])):
-								mutation=feature[node][iNode]
-								if type(mutation)==int:
-									stringList.append(str(mutation))
-								else:
-									stringList.append(str(mutation[0])+"-"+str(mutation[1]))
-								if iNode<(len(feature[node])-1):
-									stringList.append(",")
-					elif feat=="errors":
-						for iNode in range(len(feature[node])):
-							mutation=feature[node][iNode]
-							stringList.append(allelesListExt[mutation[0]]+str(mutation[1])+allelesListExt[mutation[2]]+":"+str(mutation[3]))
-							if iNode<(len(feature[node])-1):
-								stringList.append(",")
-					elif feat=="lineage":
-						stringList.append(feature[node])
-					elif feat=="lineages":
-						for lineageName in feature[node].keys():
-							stringList.append(lineageName+":"+str(feature[node][lineageName]))
-							stringList.append(",")
-						stringList.pop()
-					elif feat=="rootSupport" and identicalTo=="":
-						if feature[node]!=None:
-							stringList.append(str(feature[node]))
-				# this column highlights nodes with support below threshold and with number of descendants above threshold
-				elif feat=="supportGroup":
-					if tree.support[node]!=None:
-						if tree.support[node]<0.9:
-							nDescString="nDesc<11_"
-							if identicalTo=="":
-								if tree.nDesc[node]>100000:
-									nDescString="nDesc>100000_"
-								elif tree.nDesc[node]>10000:
-									nDescString="nDesc>10000_"
-								elif tree.nDesc[node]>1000:
-									nDescString="nDesc>1000_"
-								elif tree.nDesc[node]>100:
-									nDescString="nDesc>100_"
-								elif tree.nDesc[node]>10:
-									nDescString="nDesc>10_"
-							if tree.support[node]<0.5:
-								nDescString+="support<0.5"
-							else:
-								nDescString+="support<0.9"
-						else:
-							nDescString=""
-						stringList.append(nDescString)
-			stringList.append("\t")
-		stringList[-1]="\n"
-		return "".join(stringList)
-
 
 	#calculate number of descendants for each node.
 	def calculateNDesc(tree,node):
