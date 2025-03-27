@@ -11207,6 +11207,7 @@ if __name__ == "__main__":
 		timeRecalculation=time()-start
 		print("Time to run initial tree EM estimation: "+str(timeRecalculation))
 
+	# This function was moved upward to be used in Lineage Assignments by Lineage reference genomes
 	#generate the string corresponding to a line of the tsv file for use in Taxonium.
 	# If representative node is 0-dist, then its support is also the support of all represented nodes. If not, can we assume that the support of the represented nodes is 1.
 	# Includes support of represented nodes only if supportFor0Branches is true, otherwise smpty string.
@@ -11239,6 +11240,13 @@ if __name__ == "__main__":
 							stringList.append(namesInTree[tree.name[feature[node][iNode][0]]]+":"+str(feature[node][iNode][1]))
 							if iNode<(len(feature[node])-1):
 								stringList.append(",")
+					# use this column to highlight which lineages could be placed (with probability above threshold) on the branch above the current node - used to highlight alternative placements of a given lineage on the tree.
+					elif feat == "supportToLineages" and identicalTo == "":
+						for iNode in range(len(feature[node])):
+							stringList.append(feature[node][iNode][0] + ":" + str(
+								feature[node][iNode][1]))
+							if iNode < (len(feature[node]) - 1):
+								stringList.append(";")
 					elif feat=="mutationsInf" and identicalTo=="":
 						for iNode in range(len(feature[node])):
 							mutation=feature[node][iNode]
