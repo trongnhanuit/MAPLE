@@ -11683,7 +11683,7 @@ if __name__ == "__main__":
 				print(" EM to update mutRate during initial placement terminated, new mutRate "+str(mutRate)+" time taken: "+str(time()-start))
 
 			start=time()
-			bestNode , bestScore, bestBranchLengths, bestPassedVect = findBestParentForNewSample(tree,t1,newPartials,numSamples,diffsTime=newPartialsTime)
+			bestNode , bestScore, bestBranchLengths, bestPassedVect = findBestParentForNewSample(tree,t1,newPartials,numSamples,computePlacementSupportOnly=False, diffsTime=newPartialsTime)
 			timeFinding+=(time()-start)
 			if bestBranchLengths!=None:
 				start=time()
