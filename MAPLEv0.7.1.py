@@ -11306,6 +11306,300 @@ if __name__ == "__main__":
 		stringList[-1]="\n"
 		return "".join(stringList)
 
+	# seek placements for a chunk that contains a subset of lineage reference genomes
+	def process_chunk(job_id, start, end, lineageRefNames, tree, t1, lineageRefData):
+		chunk_output = []
+		numSamples = 0
+		totalSamples = end - start
+		# Process a chunk of tasks and return results
+		for lineageRefName in lineageRefNames[start:end]:
+			# extract the partial of the lineage reference genome
+			newPartials = probVectTerminalNode(lineageRefData[lineageRefName], None, None)
+
+			# find the best placement for the lineage reference genome
+			possiblePlacements = findBestParentForNewSample(tree, t1, newPartials, numSamples,
+															computePlacementSupportOnly=True)
+
+			# finetune the placement position
+			if len(possiblePlacements):
+				# sort possiblePlacements by placement's support descending
+				sortedPlacements = sorted(possiblePlacements, key=lambda x: x[1], reverse=True)
+
+			else:
+				print(f"Something went wrong: possiblePlacements for {lineageRefName} is empty")
+				raise Exception("exit")
+
+			chunk_output.append((lineageRefName, sortedPlacements))
+
+			# update progress
+			numSamples += 1
+			if numSamples % 50 == 0 or numSamples == totalSamples:
+				print(f"JobID {job_id} processed {numSamples}/{totalSamples}")
+
+		return chunk_output
+
+
+	# seek placements for lineage reference genomes
+	def seekPlacementOfLineageRefs(tree, t1, lineageRefData, numCores):
+		dist = tree.dist
+		up = tree.up
+		# create a map from a lineage to its possible placements
+		tree.lineagePlacements = {}
+		lineageRefNames = list(lineageRefData.keys())
+		chunk_size = (len(lineageRefNames) + numCores - 1) // numCores  # Ensures rounding up
+		chunks = [(i, min(i + chunk_size, len(lineageRefNames))) for i in range(0, len(lineageRefNames), chunk_size)]
+
+		# Parallelize over chunks
+		results = Parallel(n_jobs=numCores)(
+			delayed(process_chunk)(job_id, start, end, lineageRefNames, tree, t1, lineageRefData) for
+			job_id, (start, end) in enumerate(chunks)
+		)
+
+		for chunk_output in results:
+			for lineageRefName, sortedPlacements in chunk_output:
+				# delete lineage genome that is already processed
+				lineageRefData[lineageRefName] = None
+
+				# extract the best placement (with the highest support)
+				selectedPlacement = sortedPlacements[0][0]
+				topBlength, bottomBlength, appendingBlength = sortedPlacements[0][2]
+
+				# append the lineage assignment into the selected node
+				lineageRootPosition = None
+				if appendingBlength <= lineageRefsThresh:
+					# if topBlength == 0, we already record the parent instead of the original placement, so no further processing needed
+					# if not topBlength and up[selectedPlacement]:
+					#	selectedPlacement = up[selectedPlacement]
+					# traverse upward to the top of the polytomy
+					#	while (dist[selectedPlacement] <= effectivelyNon0BLen) and (up[selectedPlacement] != None):
+					#		selectedPlacement = up[selectedPlacement]
+					tree.lineageAssignments[selectedPlacement].append([lineageRefName, bottomBlength])
+					lineageRootPosition = selectedPlacement
+
+				# update the list of possible placements for this lineage
+				tree.lineagePlacements[lineageRefName] = (sortedPlacements, lineageRootPosition)
+
+		# a node may be assigned multiple lineages
+		for node in range(len(tree.lineageAssignments)):
+			lineageAssignments = tree.lineageAssignments[node]
+
+			# assign the list of lineages to this node
+			if len(lineageAssignments) > 0:
+				# when a node is descendant of multiple references,
+				# assign all these lineages to this node
+				if allowMultiLineagesPerNode:
+					tree.lineage[node] = "/".join(lineageRefName for lineageRefName, _ in lineageAssignments)
+				# otherwise, we assign the phylogenetically closest one to it
+				else:
+					closestLineage = lineageAssignments[0][0]
+					closetDistance = lineageAssignments[0][1]
+					for i in range(1, len(lineageAssignments)):
+						if lineageAssignments[i][1] < closetDistance:
+							closestLineage = lineageAssignments[i][0]
+							closetDistance = lineageAssignments[i][1]
+					tree.lineage[node] = closestLineage
+
+		return tree
+
+
+	# Annotate nodes by their lineage assignments
+	def annotateLineageAssignments(tree, root):
+		children = tree.children
+		lineages = tree.lineage
+
+		# traverse the tree and annotate nodes with their lineage assignments
+		# start from the root
+		nodesToVisit = []
+		# If root is not assigned a lineage
+		# set lineages[root] = "-" instead of None
+		if not lineages[root]:
+			lineages[root] = "-"
+		for child in children[root]:
+			nodesToVisit.append((child, lineages[root]))
+		while nodesToVisit:
+			node, lineage = nodesToVisit.pop()
+
+			# if this node has NOT been already assigned any lineage,
+			# inherit the assignment from its parent node
+			if not lineages[node]:
+				lineages[node] = lineage
+
+			# traverse downward to children nodes
+			for child in children[node]:
+				nodesToVisit.append((child, lineages[node]))
+
+		# synchronize lineages to tree
+		tree.lineage = lineages
+
+		# return the updated tree
+		return tree
+
+
+	def defineSupportedToLineages(tree):
+		# init supportToLineages
+		numNodes = len(tree.up)
+		tree.supportToLineages = [[] for _ in range(numNodes)]
+		lineagePlacements = tree.lineagePlacements
+		for key in lineagePlacements:
+			plausiblePlacements, lineageRootPosition = lineagePlacements[key]
+			for placement, support, optimizedBlengths in plausiblePlacements:
+				topBlength, bottomBlength, appendingBlength = optimizedBlengths
+				if appendingBlength <= lineageRefsThresh:
+					tree.supportToLineages[placement].append([key, support])
+		return tree
+
+
+	# Write lineage assignments to output file
+	def outputLineageAssignments(outputFile, tree, root):
+		tree = defineSupportedToLineages(tree)
+		# ------------ write TSV file ------------------
+		giveInternalNodeNames(tree, t1, namesInTree=namesInTree, replaceNames=False)
+		file = open(outputFile + "_metaData_lineageAssignment.tsv", "w")
+
+		children = tree.children
+		up = tree.up
+		name = tree.name
+		minorSequences = tree.minorSequences
+		featureNames = {}
+		featureNames['lineage'] = 'lineage'
+		featureNames['supportToLineages'] = 'supportToLineages'
+		featureList = list(featureNames.keys())
+		file.write("strain" + "\t" + "collapsedTo")
+		for feat in featureList:
+			file.write("\t" + featureNames[feat])
+		file.write("\n")
+		# now write to file the features for each node of the tree.
+		nextNode = root
+		direction = 0
+		numLeaves = 0
+		while nextNode != None:
+			if children[nextNode]:
+				if direction == 0:
+					nextNode = children[nextNode][0]
+				elif direction == 1:
+					nextNode = children[nextNode][1]
+					direction = 0
+				else:
+					file.write(tsvForNode(tree, nextNode, namesInTree[name[nextNode]], featureList, namesInTree))
+					if up[nextNode] != None:
+						if children[up[nextNode]][0] == nextNode:
+							direction = 1
+						else:
+							direction = 2
+					nextNode = up[nextNode]
+			else:
+				numLeaves += (1 + len(minorSequences[nextNode]))
+				if len(minorSequences[nextNode]) > 0:
+					file.write(tsvForNode(tree, nextNode, namesInTree[name[nextNode]], featureList, namesInTree,
+										  identicalTo=namesInTree[name[nextNode]] + "_MinorSeqsClade"))
+
+					for s2 in minorSequences[nextNode]:
+						file.write(tsvForNode(tree, nextNode, namesInTree[s2], featureList, namesInTree,
+											  identicalTo=namesInTree[name[nextNode]] + "_MinorSeqsClade"))
+
+					file.write(tsvForNode(tree, nextNode, namesInTree[name[nextNode]] + "_MinorSeqsClade", featureList,
+										  namesInTree))
+				else:
+					file.write(tsvForNode(tree, nextNode, namesInTree[name[nextNode]], featureList, namesInTree))
+				if up[nextNode] != None:
+					if children[up[nextNode]][0] == nextNode:
+						direction = 1
+					else:
+						direction = 2
+				nextNode = up[nextNode]
+
+		# close the output file
+		file.close()
+
+		print(f"Output lineage assignments at {outputFile}_metaData_lineageAssignment.tsv.")
+
+		# write TSV mapping from lineage to its possible placements
+		file = open(outputFile + "_metaData_lineagePlacements.tsv", "w")
+		lineagePlacements = tree.lineagePlacements
+		file.write("lineage\tplacements\toptimizedBlengths\tlineageRootPosition\n")
+		for key in lineagePlacements:
+			placementStrVec = []
+			placementBlengthsVec = []
+			plausiblePlacements, lineageRootPosition = lineagePlacements[key]
+			for placement, support, optimizedBlengths in plausiblePlacements:
+				placementStrVec.append(f"{namesInTree[name[placement]]}:{str(support)}")
+				blengthsVec = []
+				for blength in optimizedBlengths:
+					if blength:
+						blengthsVec.append(str(blength))
+					else:
+						blengthsVec.append("0")
+				blengthsStr = "/".join(blengthsVec)
+				placementBlengthsVec.append(f"{namesInTree[name[placement]]}:({blengthsStr})")
+
+			# extract the root position of the lineage (if the current lineage is considered as an ancestral of a subtree)
+			lineageRootPositionStr = "-"
+			if lineageRootPosition != None:
+				lineageRootPositionStr = namesInTree[name[lineageRootPosition]]
+
+			placementStr = ";".join(placementStrVec)
+			placementBlengthsStr = ";".join(placementBlengthsVec)
+			file.write(key + "\t" + placementStr + "\t" + placementBlengthsStr + "\t" + lineageRootPositionStr + "\n")
+
+		# close the output file
+		file.close()
+
+		print(f"Output a map from lineages to their placements at {outputFile}_metaData_lineagePlacements.tsv.")
+		# ------------ end of write TSV file ------------------
+
+		# ------------ write Nexus treefile ------------------
+		newickString = createNewick(tree, root, binary=binaryTree, namesInTree=namesInTree)
+		file = open(outputFile + "_lineageAssignment.tree", "w")
+		file.write("#NEXUS\nbegin taxa;\n	dimensions ntax=" + str(len(namesInTree)) + ";\n	taxlabels\n")
+		for name in namesInTree:
+			file.write("	" + name + "\n")
+		file.write(";\nend;\n\nbegin trees;\n	tree TREE1 = [&R] ")
+		file.write(newickString)
+		file.write("\nend;\n")
+		file.close()
+		print(f"Output Nexus tree with lineage assignments at {outputFile}_lineageAssignment.tree.")
+		# ------------ end of write Nexus treefile ------------------
+
+		# ------------ write Newick treefile ------------------
+		newickString = createNewick(tree, root, binary=binaryTree, namesInTree=namesInTree, estimateMAT=False,
+									networkOutput=False, aBayesPlusOn=False)
+		file = open(outputFile + "_updatedBlengths.tree", "w")
+		file.write(newickString)
+		file.close()
+		print(f"Output Newick tree with updated branch lengths at {outputFile}_updatedBlengths.tree.")
+		# ------------ end of write Newick treefile ------------------
+		# return success
+		return tree
+
+
+	# Process linage assignments by reference genomes
+	# Input: tree and lineage reference genomes
+	# Output: assignments of nodes (tip and internal nodes) to lineages
+	# 1. find a placement for each lineage reference
+	# 2. locate the subtree rooted at the placement of each lineage reference; assign all children of that subtree to that lineage
+	def assignLineageByReferencePlacement(tree, t1, lineageRefData, numCores):
+		numNodes = len(tree.up)
+		tree.lineageAssignments = [[] for _ in range(numNodes)]
+		tree.lineage = [None] * numNodes
+		tree.lineages = [None] * numNodes  # don't use but need to add to reuse other functions
+
+		# 1. Find a placement for each lineage reference
+		tree = seekPlacementOfLineageRefs(tree, t1, lineageRefData, numCores)
+
+		# 2. Annotate nodes by their lineage assignments
+		tree = annotateLineageAssignments(tree, t1)
+
+		# Write lineage assignments to output file
+		outputLineageAssignments(outputFile, tree, t1)
+
+		# terminate the program
+		exit(0)
+
+
+	# Process linage assignments by reference genomes
+	if performLineageAssignmentByRefPlacement:
+		assignLineageByReferencePlacement(tree, t1, lineageRefData, numCores)
+
 	# initial EM round to estimate the time-scaled mutation rate
 	if doTimeTree and (numSamples>=minNumSamplesForMutRate):
 		start=time()
