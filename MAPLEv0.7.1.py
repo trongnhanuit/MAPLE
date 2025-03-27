@@ -11368,7 +11368,7 @@ if __name__ == "__main__":
 
 				# append the lineage assignment into the selected node
 				lineageRootPosition = None
-				if appendingBlength <= lineageRefsThresh:
+				if appendingBlength < lineageRefsThresh:
 					# if topBlength == 0, we already record the parent instead of the original placement, so no further processing needed
 					# if not topBlength and up[selectedPlacement]:
 					#	selectedPlacement = up[selectedPlacement]
@@ -11446,7 +11446,7 @@ if __name__ == "__main__":
 			plausiblePlacements, lineageRootPosition = lineagePlacements[key]
 			for placement, support, optimizedBlengths in plausiblePlacements:
 				topBlength, bottomBlength, appendingBlength = optimizedBlengths
-				if appendingBlength <= lineageRefsThresh:
+				if appendingBlength < lineageRefsThresh:
 					tree.supportToLineages[placement].append([key, support])
 		return tree
 
