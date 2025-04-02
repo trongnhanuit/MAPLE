@@ -85,6 +85,7 @@ parser.add_argument('--reRoot',default="", help='Re-root the input newick tree s
 #lineage assignment from reference genomes which are not in the tree yet
 parser.add_argument('--lineageRefs',default="", help='give path and name to an alignment file (in MAPLE format) containing reference genomes, each represents one lineage. When using this option, option --inputTree should also be used. Then MAPLE will find the best placement for each lineage reference (note that these lineage references do not exist in the input tree). Each sample is assigned a lineage same as its closest reference parent.')
 parser.add_argument('--lineageRefsThresh',default=1.0, help='The threshold (in term of #mutation) to check whether a reference lineage genome could be considered as the parent of a subtree. Default: 1 mutation', type = float)
+parser.add_argument('--lineageRefsSupportThresh',default=0.95, help='A lineage will be assigned to a subtree only if the SPRTA support for that lineage placement exceeds this threshold. Default: 0.95', type = float)
 parser.add_argument('--allowMultiLineagesPerNode', help='When a node is selected as the best placements for multiple lineages, whether we allow assigning all of these lineages (or only the closest lineage) to the subtree. Default: assigning the closet lineage', action="store_true")
 
 #rarer options
@@ -136,6 +137,7 @@ outputFile=args.output
 refFile=args.reference
 lineageRefs=args.lineageRefs
 lineageRefsThresh = args.lineageRefsThresh
+lineageRefsSupportThresh = args.lineageRefsSupportThresh
 allowMultiLineagesPerNode = args.allowMultiLineagesPerNode
 performLineageAssignmentByRefPlacement = (lineageRefs != "")
 allowedFails=args.allowedFails
@@ -11364,11 +11366,12 @@ if __name__ == "__main__":
 
 				# extract the best placement (with the highest support)
 				selectedPlacement = sortedPlacements[0][0]
+				selectedPlacementSupport = sortedPlacements[0][1]
 				topBlength, bottomBlength, appendingBlength = sortedPlacements[0][2]
 
 				# append the lineage assignment into the selected node
 				lineageRootPosition = None
-				if appendingBlength < lineageRefsThresh:
+				if appendingBlength <= lineageRefsThresh and selectedPlacementSupport >= lineageRefsSupportThresh:
 					# if topBlength == 0, we already record the parent instead of the original placement, so no further processing needed
 					# if not topBlength and up[selectedPlacement]:
 					#	selectedPlacement = up[selectedPlacement]
@@ -11446,7 +11449,7 @@ if __name__ == "__main__":
 			plausiblePlacements, lineageRootPosition = lineagePlacements[key]
 			for placement, support, optimizedBlengths in plausiblePlacements:
 				topBlength, bottomBlength, appendingBlength = optimizedBlengths
-				if appendingBlength < lineageRefsThresh:
+				if appendingBlength <= lineageRefsThresh:
 					tree.supportToLineages[placement].append([key, support])
 		return tree
 
