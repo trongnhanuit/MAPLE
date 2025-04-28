@@ -11251,6 +11251,8 @@ if __name__ == "__main__":
 								feature[node][iNode][1]))
 							if iNode < (len(feature[node]) - 1):
 								stringList.append(";")
+					elif feat=="lineageParent":
+						stringList.append(feature[node])
 					elif feat=="mutationsInf" and identicalTo=="":
 						for iNode in range(len(feature[node])):
 							mutation=feature[node][iNode]
@@ -11411,6 +11413,7 @@ if __name__ == "__main__":
 	def annotateLineageAssignments(tree, root):
 		children = tree.children
 		lineages = tree.lineage
+		lineagesParent = tree.lineageParent
 
 		# traverse the tree and annotate nodes with their lineage assignments
 		# start from the root
@@ -11419,10 +11422,14 @@ if __name__ == "__main__":
 		# set lineages[root] = "-" instead of None
 		if not lineages[root]:
 			lineages[root] = "-"
+		lineagesParent[root] = "-"
 		for child in children[root]:
 			nodesToVisit.append((child, lineages[root]))
 		while nodesToVisit:
 			node, lineage = nodesToVisit.pop()
+
+			# record the lineage of the parent node
+			lineagesParent[node] = lineage
 
 			# if this node has NOT been already assigned any lineage,
 			# inherit the assignment from its parent node
@@ -11435,6 +11442,7 @@ if __name__ == "__main__":
 
 		# synchronize lineages to tree
 		tree.lineage = lineages
+		tree.lineageParent = lineagesParent
 
 		# return the updated tree
 		return tree
@@ -11468,6 +11476,7 @@ if __name__ == "__main__":
 		featureNames = {}
 		featureNames['lineage'] = 'lineage'
 		featureNames['supportToLineages'] = 'supportToLineages'
+		featureNames['lineageParent'] = 'lineageParent'
 		featureList = list(featureNames.keys())
 		file.write("strain" + "\t" + "collapsedTo")
 		for feat in featureList:
@@ -11586,6 +11595,7 @@ if __name__ == "__main__":
 		numNodes = len(tree.up)
 		tree.lineageAssignments = [[] for _ in range(numNodes)]
 		tree.lineage = [None] * numNodes
+		tree.lineageParent = [None] * numNodes # the lineage of the parent node of this node
 		tree.lineages = [None] * numNodes  # don't use but need to add to reuse other functions
 
 		# 1. Find a placement for each lineage reference
