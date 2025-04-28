@@ -1,6 +1,3 @@
-#if __name__ != "__main__":
-#	raise Exception("Error in parallelization")
-
 import sys
 from math import log
 import argparse
@@ -8,15 +5,15 @@ from time import time
 import os.path
 from operator import itemgetter
 
-#©EMBL-European Bioinformatics Institute, 2021-2023
+#©EMBL-European Bioinformatics Institute, 2021-2025
 #Developd by Nicola De Maio, with contributions from Myrthe Willemsen.
 
 # MAPLE code to estimate a tree by maximum likelihood from a MAPLE format input.
 
-
+# here SPRTA has been parallelized
 
 # TODO currently implementing Time trees
-#TODO TODO TODO infer posterior node time ranges and and write time tree to output file.
+#TODO TODO TODO infer posterior node time ranges and write time tree to output file.
 #TODO TODO TODO investigate if any input time is plausible wrong and mask it.
 
 
@@ -92,6 +89,7 @@ parser.add_argument("--nonBinaryTree", help="Write output tree with multifurcati
 parser.add_argument("--writeTreesToFileEveryTheseSteps", help="By default, don't write intermediate trees to file. If however a positive integer is specified with this option, intermediate trees will be written to file every this many topological changes.",  type=int, default=0)
 parser.add_argument("--writeLKsToFileEveryTheseSteps", help="By default, don't write likelihoods of intermediate trees to file. If however a positive integer is specified with this option, likelihoods of intermediate trees will be written to file every this many topological changes.",  type=int, default=0)
 parser.add_argument("--noSubroundTrees", help="Do not write to file subround treees.", action="store_true")
+parser.add_argument("--doNotOptimiseBLengths", help="Do not optimise the branch lengths of the tree (useful if the input tree is already optimal or doesn't need changing).", action="store_true")
 #error model options
 parser.add_argument("--estimateErrorRate", help="Estimate a single error rate for the whole genome. Input value is used as starting value", action="store_true")
 parser.add_argument("--estimateSiteSpecificErrorRate", help="Estimate a separate error rate for each genome genome. Input value is used as starting value", action="store_true")
@@ -221,6 +219,7 @@ inputTree=args.inputTree
 inputRates=args.inputRates
 inputRFtrees=args.inputRFtrees
 largeUpdate=args.largeUpdate
+doNotOptimiseBLengths=args.doNotOptimiseBLengths
 
 assignmentFile=args.assignmentFile
 assignmentFileCSV=args.assignmentFileCSV
@@ -242,7 +241,6 @@ if estimateErrors and (not estimateSiteSpecificErrorRate) and (not errorRateSite
 minErrorProb=args.minErrorProb
 rateVariation=args.rateVariation
 mutMatrixGlobal=None
-#mutMatricesGlobal=None
 rootFreqsLogErrorCumulative=None
 totError=None
 cumulativeErrorRate=None
@@ -256,13 +254,8 @@ else:
 	errorRateGlobal=None
 	errorRateSiteSpecific=None
 	useRateVariation=None
-#print("errorRateGlobal")
-#print(errorRateGlobal)
 
-
-aBayesPlus=args.aBayesPlus
-sprta=args.SPRTA
-aBayesPlus=aBayesPlus or sprta
+aBayesPlus=args.aBayesPlus or args.SPRTA
 networkOutput=args.networkOutput
 minBranchSupport=args.minBranchSupport
 supportFor0Branches=args.supportFor0Branches
@@ -274,7 +267,10 @@ estimateMAT=args.estimateMAT
 minMutProb=args.minMutProb
 doNotImproveTopology=args.doNotImproveTopology
 keepInputIQtreeSupports=args.keepInputIQtreeSupports
-aBayesPlusOn=False
+if __name__ == "__main__":
+	aBayesPlusOn=False
+else:
+	aBayesPlusOn=aBayesPlus
 if aBayesPlus or doTimeTree:
 	from math import exp
 
@@ -285,21 +281,11 @@ numChildLKs=[0]
 useFixedThresholdLogLKoptimizationTopology=args.useFixedThresholdLogLKoptimizationTopology
 totDivFromRef=[0.0]
 
-#ref=None
 nonMutRates=None
 cumulativeRate=None
 siteRates=None
 errorRates=None
 mutMatrices=None
-#lRef=None
-#globalTotRate=None
-#logLRef=None
-#cumulativeBases=None
-#rootFreqs=None
-#rootFreqsLog=None
-#refIndeces=None
-#oneMutBLen=None
-
 
 #HnZ check and HnZvector definition and update 
 HnZ=args.HnZ
@@ -3611,7 +3597,6 @@ allelesListLow=["a","c","g","t"]
 ambiguities={"y":[0.0,0.5,0.0,0.5],"r":[0.5,0.0,0.5,0.0],"w":[0.5,0.0,0.0,0.5],"s":[0.0,0.5,0.5,0.0],"k":[0.0,0.0,0.5,0.5],"m":[0.5,0.5,0.0,0.0],"d":[1.0/3,0.0,1.0/3,1.0/3],"v":[1.0/3,1.0/3,1.0/3,0.0],"h":[1.0/3,1.0/3,0.0,1.0/3],"b":[0.0,1.0/3,1.0/3,1.0/3]}
 
 
-#if __name__ == "__main__":
 #vector to count how many bases of each type are cumulatively in the reference genome up to a certain position
 cumulativeBases=[[0,0,0,0]]
 for i in range(lRef):
@@ -3995,7 +3980,6 @@ if __name__ == "__main__":
 			return False
 
 
-#if __name__ == "__main__":
 	#Initialize the mutation rate matrix
 	#If a fixed rate matrix is needed for SARS-CoV-2, this is the nucleotide mutation rate matrix from De Maio et al 2021 (now obsolete)
 	#mutMatrix=[[0.0,0.039,0.310,0.123],[0.140,0.0,0.022,3.028],[0.747,0.113,0.0,2.953],[0.056,0.261,0.036,0.0]]
@@ -5424,28 +5408,6 @@ if __name__ == "__main__":
 	# update the partials iteratively starting from the nodes in nodeList
 	#each entry in nodeList contains the node it refers to, and the direction where the update comes from (0 is left child, 1 is right child, 2 is parent)
 	def updatePartials(tree,nodeList):
-		# print("\n started updatePartials")
-		# print("names")
-		# print(tree.name)
-		# print("up")
-		# print(tree.up)
-		# print("children")
-		# print(tree.children)
-		# print("probVectTime")
-		# print(tree.probVectTime)
-		# print("dateData")
-		# print(tree.dateData)
-		# print("probVectUpRightTime")
-		# print(tree.probVectUpRightTime)
-		# print("probVectUpLeftTime")
-		# print(tree.probVectUpLeftTime)
-		# print("probVectTotUpTime")
-		# print(tree.probVectTotUpTime)
-		# print("dist")
-		# print(tree.dist)
-		# print("mutRate")
-		# print(mutRate)
-		# print("\n\n")
 		dirty=tree.dirty
 		up=tree.up
 		children=tree.children
@@ -5497,7 +5459,6 @@ if __name__ == "__main__":
 							newTot=mergeVectors(vectUpUp,dist[node]/2,False,probVect[node],dist[node]/2,isTip,isUpDown=True)
 							madeChange=True
 							if doTimeTree:
-								#print("TotUp")
 								newVectTime,newVectTimeProb=mergeVectorsTime(vectUpUpTime,dist[node]/2,probVectTime[node],dist[node]/2,mutRate,isUpDown=True,returnLK=True)
 								if isinstance(newVectTime, int):
 									resolveTimeInconsistency(tree,node,newVectTime,mutRate)
@@ -5511,20 +5472,9 @@ if __name__ == "__main__":
 						probVectTotUp[node]=newTot
 						shorten(probVectTotUp[node])
 					if timeLKdirty:
-						#print("TotUp again")
-						#print(vectUpUpTime)
-						#print(probVectTime)
-						#print(node)
-						#print(dist[node])
-						#print(up[node])
-						#print(children[node])
-						#print(children[up[node]])
-						#print(dist)
 						newVectTime,newVectTimeProb=mergeVectorsTime(vectUpUpTime,dist[node]/2,probVectTime[node],dist[node]/2,mutRate,isUpDown=True,returnLK=True)
 						if isinstance(newVectTime, int):
 							resolveTimeInconsistency(tree,node,newVectTime,mutRate)
-							#print("Resolved inconsistency, vector before")
-							#print(probVectTotUpTime[node])
 							if node==children[up[node]][0]:
 								vectUpUpTime=probVectUpRightTime[up[node]]
 							else:
@@ -5585,7 +5535,6 @@ if __name__ == "__main__":
 						upLeftChangedTime=False
 						if doTimeTree:
 							if madeChange:
-								#print("TotUp 3")
 								newVectTime,newVectTimeProb=mergeVectorsTime(vectUpUpTime,dist[node]/2,probVectTime[node],dist[node]/2,mutRate,isUpDown=True,returnLK=True)
 								if isinstance(newVectTime, int):
 									resolveTimeInconsistency(tree,node,newVectTime,mutRate)
@@ -5599,7 +5548,6 @@ if __name__ == "__main__":
 							if timeLKdirty or madeChange:
 								child0Vect=probVectTime[children[node][0]]
 								child1Vect=probVectTime[children[node][1]]
-								#print("upRight")
 								newUpRightTime=mergeVectorsTime(vectUpUpTime,dist[node],child1Vect,dist1,mutRate,isUpDown=True)
 								if isinstance(newUpRightTime, int):
 									resolveTimeInconsistency(tree,node,newUpRightTime,mutRate)
@@ -5608,7 +5556,6 @@ if __name__ == "__main__":
 									else:
 										vectUpUpTime=probVectUpLeftTime[up[node]]
 									newUpRightTime=mergeVectorsTime(vectUpUpTime,dist[node],child1Vect,dist1,mutRate,isUpDown=True)
-								#print("upLeft")
 								newUpLeftTime=mergeVectorsTime(vectUpUpTime,dist[node],child0Vect,dist0,mutRate,isUpDown=True)
 								if isinstance(newUpLeftTime, int):
 									resolveTimeInconsistency(tree,node,newUpLeftTime,mutRate)
@@ -5743,8 +5690,7 @@ if __name__ == "__main__":
 							except AttributeError:
 								oldProbVectTime=None
 							probVectTime[node]=newVect
-							if (up[node] != None):# and (vectUpUpTime!=None):
-								#print("TotUp 4")
+							if (up[node] != None):
 								newTot,newTotProb=mergeVectorsTime(vectUpUpTime,dist[node]/2,probVectTime[node],dist[node]/2,mutRate,isUpDown=True,returnLK=True)
 								if isinstance(newTot, int):
 									resolveTimeInconsistency(tree,node,newTot,mutRate)
@@ -5755,9 +5701,6 @@ if __name__ == "__main__":
 									newTot,newTotProb=mergeVectorsTime(vectUpUpTime,dist[node]/2,probVectTime[node],dist[node]/2,mutRate,isUpDown=True,returnLK=True)
 								newTotProb-=appendProbNodeTime(vectUpUpTime,probVectTime[node],mutRate,dist[node])
 								probVectTotUpTime[node]=(newTot,newTotProb)
-							#if otherVectUpTime!=None:
-							#if up[node] != None:
-								#print("up")
 								newUpVectTime=mergeVectorsTime(vectUpUpTime,dist[node],probVectDownTime,childDist,mutRate,isUpDown=True)
 								if isinstance(newUpVectTime, int):
 									resolveTimeInconsistency(tree,node,newUpVectTime,mutRate)
@@ -5767,11 +5710,7 @@ if __name__ == "__main__":
 										vectUpUpTime=probVectUpLeftTime[up[node]]
 									newUpVectTime=mergeVectorsTime(vectUpUpTime,dist[node],probVectDownTime,childDist,mutRate,isUpDown=True)
 							else:
-								#print("recalculating up vect to check if it changed for node "+str(children[node][childNum])+" during updatePartials")
 								newUpVectTime=rootVectorTime(probVectDownTime,childDist,mutRate)
-								#print(newUpVectTime)
-								#print(otherVectUpTime)
-								#print(areVectorsDifferentTime(otherVectUpTime,newUpVectTime))
 
 							if areVectorsDifferentTime(otherVectUpTime,newUpVectTime):
 								upChangedTime=True
@@ -5802,29 +5741,6 @@ if __name__ == "__main__":
 							nodeList.append((up[node],childNumUp,downChanged,downChangedTime))
 					if upChanged or upChangedTime:
 						nodeList.append((children[node][otherChildNum],2,upChanged,upChangedTime))
-
-		# print("\n finished updatePartials")
-		# print("names")
-		# print(tree.name)
-		# print("up")
-		# print(tree.up)
-		# print("children")
-		# print(tree.children)
-		# print("probVectTime")
-		# print(tree.probVectTime)
-		# print("dateData")
-		# print(tree.dateData)
-		# print("probVectUpRightTime")
-		# print(tree.probVectUpRightTime)
-		# print("probVectUpLeftTime")
-		# print(tree.probVectUpLeftTime)
-		# print("probVectTotUpTime")
-		# print(tree.probVectTotUpTime)
-		# print("dist")
-		# print(tree.dist)
-		# print("mutRate")
-		# print(mutRate)
-		# print("\n\n")
 		return
 
 
@@ -6023,10 +5939,7 @@ if __name__ == "__main__":
 	#Given a tree, and a substitution rate matrix, re-calculate all genome lists within the tree according to this matrix.
 	# this is useful once the matrix estimation has finished, to make sure all genome lists reflect this matrix. 
 	#TODO TODO TODO check if additions made for time probabilities work
-	def reCalculateAllGenomeLists(tree,root, checkExistingAreCorrect=False,countNodes=False,countPseudoCounts=False,pseudoMutCounts=None,data=None,dates=None,names=None,firstSetUp=False): #checkSamplesIntree=False
-		#if useRateVariation:
-		#	print("Inside reCalculateAllGenomeLists")
-		#	print(mutMatrices[0])
+	def reCalculateAllGenomeLists(tree,root, checkExistingAreCorrect=False,countNodes=False,countPseudoCounts=False,pseudoMutCounts=None,data=None,dates=None,names=None,firstSetUp=False):
 		up=tree.up
 		children=tree.children
 		probVectUpRight=tree.probVectUpRight
@@ -6808,7 +6721,7 @@ totalTimeFindingParent=[0.0]
 #TODO TODO TODO test changes
 #TODO TODO TODO in case doTimeTree search within politomies but collapse these placements when doing SPRTA
 # TODO TODO TODO in the rest of the code, in case doTimeTree store probVectTotUp also for branches of length 0 - different nodes in the same multifurcation might have different time likelihoods.
-def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRate,strictTopologyStopRules=strictTopologyStopRules,allowedFailsTopology=allowedFailsTopology,thresholdLogLKtopology=thresholdLogLKtopology,sequentialSearch=True    ,errorRateGlobalPassed=None,mutMatrixGlobalPassed=None,errorRatesGlobal=None,mutMatricesGlobal=None,cumulativeRateGlobal=None,cumulativeErrorRateGlobal=None,totErrorPassed=None):
+def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRate,strictTopologyStopRules=strictTopologyStopRules,allowedFailsTopology=allowedFailsTopology,thresholdLogLKtopology=thresholdLogLKtopology,errorRateGlobalPassed=None,mutMatrixGlobalPassed=None,errorRatesGlobal=None,mutMatricesGlobal=None,cumulativeRateGlobal=None,cumulativeErrorRateGlobal=None,totErrorPassed=None): #,sequentialSearch=True   
 	timeStartParentTopology=time()
 	up=tree.up
 	children=tree.children
@@ -6826,7 +6739,6 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 		probVectTotUpTime=tree.probVectTotUpTime
 		probVectUpRightTime=tree.probVectUpRightTime
 		probVectUpLeftTime=tree.probVectUpLeftTime
-	#if HnZ:
 	originalParent0=node
 	while (dist[originalParent0]<=effectivelyNon0BLen) and up[originalParent0]!=None:
 		originalParent0=up[originalParent0]
@@ -6842,9 +6754,6 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 		bestRemovedPartials=passGenomeListThroughBranch(bestRemovedPartials,mutations[bestNode],dirIsUp=False)
 	isRemovedTip=(len(children[children[node][child]])==0) and (len(minorSequences[children[node][child]])==0)
 	originalLK=bestLKdiff
-	#bestScore0=0
-	#bestScoreGenetic=0
-	#bestScoreTime=0
 	originalPlacement=bestNode
 	originalRemovedPartialsRelative=bestRemovedPartials
 	if doTimeTree:
@@ -6944,10 +6853,6 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 				vectUp2=passGenomeListThroughBranch(vectUp2,mutations[child2],dirIsUp=False)
 			else:
 				removedPartialsRelative2=bestRemovedPartials
-			#if doTimeTree:
-			#	vectUp2Time=rootVectorTime(probVectTime[child1],dist[child1],mutRate)
-			#else:
-			#	vectUp2Time=None
 			nDesc0ToAdd=0
 			if HnZ:
 				if dist[child2]<effectivelyNon0BLen and dist[bestNode]<effectivelyNon0BLen:
@@ -7012,25 +6917,9 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 				#correct new placement likelihood by the change in HnZ
 				if HnZ:
 					if (doTimeTree or up[up[t1]]==None) and distance<=effectivelyNon0BLen:
-						#parentNode0=originalParent0
 						parentNode0=t1
 						while dist[parentNode0]<=effectivelyNon0BLen and up[parentNode0]!=None:
 							parentNode0=up[parentNode0]
-						# print(originalParent0)
-						# print(node)
-						# print(children[node][child])
-						# print(t1)
-						# print(parentNode0)
-						# print()
-						# print(nDesc0[originalParent0])
-						# print(nDesc0[node])
-						# print(nDesc0[children[node][child]])
-						# print(nDesc0[t1])
-						# print(nDesc0[parentNode0])
-						# print(dist)
-						# print(children)
-						# print(up)
-						# print(nDesc0ToAdd)
 						if removedBLen>effectivelyNon0BLen:
 							midProb+=getHnZ(nDesc0[parentNode0]+nDesc0ToAdd+1) - getHnZ(nDesc0[parentNode0]+nDesc0ToAdd)
 						else:
@@ -7201,7 +7090,6 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 				#correct new placement likelihood by the change in HnZ
 				if HnZ:
 					if (doTimeTree or up[up[t1]]==None) and distance<=effectivelyNon0BLen:
-						#parentNode0=originalParent0
 						parentNode0=t1
 						while dist[parentNode0]<=effectivelyNon0BLen and up[parentNode0]!=None:
 							parentNode0=up[parentNode0]
@@ -7328,7 +7216,6 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 							nodesToVisit.append((up[t1],upChild+1,midProb,failedPasses,removedPartialsRelative1,nDesc0ToAddToPass))
 				#now consider case of root node
 				else:
-					#otherChild=children[t1][2-direction]
 					if needsUpdating:
 						vectUp=rootVector(passedPartials,distance,False,tree,t1,mutMatrixGlobalPassed=mutMatrixGlobalPassed,mutMatricesGlobal=mutMatricesGlobal)
 						if mutations[otherChild]:
@@ -7360,10 +7247,9 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 	compensanteForBranchLengthChange=True
 	if not bestNodes:
 		totalTimeFindingParent[0]+=(time()-timeStartParentTopology)
-		#print("Node "+str(children[node][child])+" final list of nodes empty:")
-		#print([])
 		return originalPlacement, originalLK ,originalBLens, [], 1.0, originalRemovedPartialsRelative
-	if aBayesPlusOn and sequentialSearch:
+	#if aBayesPlusOn and sequentialSearch:
+	if aBayesPlusOn:
 		if networkOutput:
 			listOfProbableNodes=[]
 		listofLKcosts=[]
@@ -7372,14 +7258,8 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 			rootAlreadyConsidered=True
 		if up[node]==None or (up[up[node]]==None and dist[children[node][1-child]]>effectivelyNon0BLen):
 			rootAlreadyConsidered=True
-		# print(up[node])
-		# if up[node]!=None:
-		# 	print(up[up[node]])
-		# print(children[node][1-child])
-		# print(dist[children[node][1-child]])
 	if doTimeTree:
 		topNodes={}
-		#if dist[children[node][child]]>effectivelyNon0BLen:
 		originalNode=children[node][1-child]
 		if dist[children[node][1-child]]<=effectivelyNon0BLen:
 			originalNode=node
@@ -7387,22 +7267,6 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 			originalNode=originalParent0
 		if up[node]!=None and up[up[node]]==None and dist[children[node][1-child]]>effectivelyNon0BLen:
 			originalNode=up[node]
-		# if dist[node]>effectivelyNon0BLen or dist[children[node][1-child]]>effectivelyNon0BLen:
-		# 	originalNode=node
-		# 	if (up[node]==None):
-		# 		pass
-		# 	elif up[up[node]]==None and (dist[children[node][1-child]]>effectivelyNon0BLen):
-		# 		originalNode=up[node]
-		# 	elif dist[children[node][1-child]]<=effectivelyNon0BLen:
-		# 		originalNode=node
-		# 	else:
-		# 		originalNode=children[node][1-child]
-		# else:
-		# 	parentNode0=originalParent0
-		# 	if (up[node]!=None) and (up[up[parentNode0]]==None):
-		# 		originalNode=up[parentNode0]
-		# 	else:
-		# 		originalNode=parentNode0
 		topNodes[originalNode]=originalLK
 	for nodePair in bestNodes:
 		score=nodePair[1]
@@ -7436,11 +7300,9 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 					else:
 						upVectTime=probVectUpLeftTime[up[t1]]
 					downVectTime=probVectTime[t1]
-					#midTotTime=probVectTotUpTime[t1][0]
 				else:
 					upVectTime=nodePair[3]
 					downVectTime=nodePair[5]
-					#midTotTime=nodePair[8]
 
 			removedPartials=nodePair[-1]
 			bestAppendingLength=estimateBranchLengthWithDerivative(midTot,removedPartials,fromTipC=isRemovedTip   ,errorRateGlobalPassed=errorRateGlobalPassed,mutMatrixGlobalPassed=mutMatrixGlobalPassed,errorRatesGlobal=errorRatesGlobal,mutMatricesGlobal=mutMatricesGlobal,cumulativeRateGlobal=cumulativeRateGlobal)
@@ -7457,30 +7319,17 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 			bestBottomLength=estimateBranchLengthWithDerivative(midTopVector,downVect,fromTipC=fromTip1   ,errorRateGlobalPassed=errorRateGlobalPassed,mutMatrixGlobalPassed=mutMatrixGlobalPassed,errorRatesGlobal=errorRatesGlobal,mutMatricesGlobal=mutMatricesGlobal,cumulativeRateGlobal=cumulativeRateGlobal)
 			newMidVector=mergeVectors(upVect,bestTopLength,False,downVect,bestBottomLength,fromTip1,isUpDown=True   ,errorRateGlobalPassed=errorRateGlobalPassed,mutMatrixGlobalPassed=mutMatrixGlobalPassed,errorRatesGlobal=errorRatesGlobal,mutMatricesGlobal=mutMatricesGlobal,cumulativeRateGlobal=cumulativeRateGlobal,cumulativeErrorRateGlobal=cumulativeErrorRateGlobal)
 			appendingCost=appendProbNode(newMidVector,removedPartials,isRemovedTip,bestAppendingLength,   errorRateGlobalPassed=errorRateGlobalPassed,mutMatrixGlobalPassed=mutMatrixGlobalPassed,errorRatesGlobal=errorRatesGlobal,mutMatricesGlobal=mutMatricesGlobal,totErrorPassed=totErrorPassed)
-			#appendingCostGenetic=appendingCost
 			if doTimeTree:
 				newMidVectorTime,appendingCostTime=mergeVectorsTime(upVectTime,bestTopLength,downVectTime,bestBottomLength,mutRate,isUpDown=True,returnLK=True)
 				appendingCostTime-=appendProbNodeTime(upVectTime,downVectTime,mutRate,distance)
-				#print("Trying to append with top length "+str(bestTopLength)+" and bottom length "+str(bestBottomLength)+" and appending length "+str(bestAppendingLength)+" at newMidVectorTime")
-				#print(newMidVectorTime)
 				if isinstance(newMidVectorTime, int):
 					appendingCost=float("-inf")
 				else:
 					appendingCostTime+=appendProbNodeTime(newMidVectorTime,removedPartialsRelativeTime,mutRate,bestAppendingLength)
 					appendingCost+=appendingCostTime
-					#print("Results in time LK cost "+str(appendingCostTime))
-					# if children[node][child]==11 and t1==15:
-					# 	print("In findBestParentTopology, mutRate "+str(mutRate)+", appending length "+str(bestAppendingLength)+", appending cost "+str(appendingCostTime)+" up, down vectors:")
-					# 	print(newMidVectorTime)
-					# 	print(removedPartialsRelativeTime)
 			if compensanteForBranchLengthChange: #if wanted, do a more thorough examination of the appending cost, taking into account a possible change in branch length of the branch on which to be appended.
 				initialCost=appendProbNode(upVect,downVect,fromTip1,distance,   errorRateGlobalPassed=errorRateGlobalPassed,mutMatrixGlobalPassed=mutMatrixGlobalPassed,errorRatesGlobal=errorRatesGlobal,mutMatricesGlobal=mutMatricesGlobal,totErrorPassed=totErrorPassed)
 				newPartialCost=appendProbNode(upVect,downVect,fromTip1,bestBottomLength+bestTopLength,   errorRateGlobalPassed=errorRateGlobalPassed,mutMatrixGlobalPassed=mutMatrixGlobalPassed,errorRatesGlobal=errorRatesGlobal,mutMatricesGlobal=mutMatricesGlobal,totErrorPassed=totErrorPassed)
-				#if doTimeTree:
-					#initialCost+=appendProbNodeTime(upVectTime,downVectTime,mutRate,distance)
-					#newPartialCost+=appendProbNodeTime(upVectTime,downVectTime,mutRate,bestBottomLength+bestTopLength)
-					# if children[node][child]==11 and t1==15:
-					# 	print("Compensations, distance "+str(distance)+", new distance  "+str(bestBottomLength+bestTopLength)+", initial cost "+str(appendProbNodeTime(upVectTime,downVectTime,mutRate,distance))+", new "+str(appendProbNodeTime(upVectTime,downVectTime,mutRate,bestBottomLength+bestTopLength)))
 				optimizedScore=appendingCost+newPartialCost-initialCost
 			else:
 				optimizedScore=appendingCost
@@ -7519,19 +7368,14 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 					if dist[t1]<=effectivelyNon0BLen:
 						addendum0+=getHnZ(nDesc0[parentNode0]+1-toBeAddedToCompensateT1+toBeAddedToCompensate-nDesc0[t1])+getHnZ(nDesc0[t1]+toBeAddedToCompensateT1)-getHnZ(nDesc0[parentNode0]+toBeAddedToCompensate)
 				elif bestBottomLength>effectivelyNon0BLen :
-					#print("Trying node "+str(t1)+" from node "+str(children[node][child]))
-					#print(parentNode0)
-					#print(originalParent0)
 					if parentNode0==originalParent0 and (not doTimeTree):
 						addendum0=float("-inf")
 					else:
-						#print(toBeAddedToCompensate)
 						if bestAppendingLength>effectivelyNon0BLen:
 							if dist[t1]<=effectivelyNon0BLen:
 								addendum0=getHnZ(nDesc0[parentNode0]+toBeAddedToCompensate+2-toBeAddedToCompensateT1-nDesc0[t1])+getHnZ(nDesc0[t1]+toBeAddedToCompensateT1) - getHnZ(nDesc0[parentNode0]+toBeAddedToCompensate)
 							else:
 								addendum0=getHnZ(nDesc0[parentNode0]+toBeAddedToCompensate+1) - getHnZ(nDesc0[parentNode0]+toBeAddedToCompensate)
-								#print("addendum0: "+str(addendum0))
 						else:
 							if dist[t1]<=effectivelyNon0BLen:
 								addendum0=getHnZ(nDesc0[parentNode0]+toBeAddedToCompensate+1-toBeAddedToCompensateT1+nDesc0[children[node][child]]-nDesc0[t1])+getHnZ(nDesc0[t1]+toBeAddedToCompensateT1) - (getHnZ(nDesc0[children[node][child]]) + getHnZ(nDesc0[parentNode0]+toBeAddedToCompensate))
@@ -7567,7 +7411,6 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 							else:
 								addendum0=getHnZ(nDesc0[parentNode0]+toBeAddedToCompensate+nDesc0[t1]+toBeAddedToCompensateT1+nDesc0[children[node][child]]) - ( getHnZ(nDesc0[children[node][child]]) + getHnZ(nDesc0[parentNode0]+toBeAddedToCompensate) + getHnZ(nDesc0[t1]+toBeAddedToCompensateT1) )
 				optimizedScore+=addendum0
-				#optimizedScore0=addendum0
 
 				#try also placing with a 0 bottom length in case it increase HnZ score.
 				if bestBottomLength>effectivelyNon0BLen and dist[t1]>effectivelyNon0BLen:
@@ -7611,62 +7454,39 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 						bestBottomLength=0.0
 
 			if optimizedScore>=bestScore:
-				#if HnZ:
-				#	bestScore0=optimizedScore0
-				#bestScoreGenetic=appendingCostGenetic
-				#bestScoreTime=appendingCostTime
 				bestNode=t1
 				bestScore=optimizedScore
 				bestBranchLengths=(bestTopLength,bestBottomLength,bestAppendingLength)
 				bestRemovedPartials=removedPartials
 
-			if aBayesPlusOn and sequentialSearch:
+			#if aBayesPlusOn and sequentialSearch:
+			if aBayesPlusOn:
 				#check that the placement location is effectively different from the original node
 				if doTimeTree:
-					# originalNode=children[node][1-child]
-					# if dist[children[node][1-child]]<=effectivelyNon0BLen:
-					# 	originalNode=node
-					# 	if dist[node]<=effectivelyNon0BLen:
-					# 		originalNode=originalParent0
-					# elif up[node]!=None and up[up[node]]==None:
-					# 	originalNode=up[node]
-
-
-					#skipRoot=False
 					if bestTopLength<=effectivelyNon0BLen:
 						topNode=up[t1]
 						while (dist[topNode]<=effectivelyNon0BLen) and (up[topNode]!=None):
 							topNode=up[topNode]
-						#if rootAlreadyConsidered and up[topNode]==None:
-						#	skipRoot=True
 					else:
 						topNode=t1
 					if (up[up[t1]]==None and bestBottomLength>effectivelyNon0BLen):
 						topNode=up[t1]
 					if (up[node]==None and up[topNode]==node):
 						topNode=node
-					#if(up[topNode]!=None) and (up[up[topNode]]==None):
-					#	topNode=up[topNode]
-					#if not skipRoot:
 					if (topNode in topNodes):
 						if (optimizedScore>topNodes[topNode]):
 							topNodes[topNode]=optimizedScore
 					else:
-						#if differentNode and (topNode!=children[node][1-child])
 						topNodes[topNode]=optimizedScore
 
 				else:
 					differentNode=True
-					#topNode=node
 					if t1==node:
 						differentNode=False
 					elif t1==children[node][1-child]:
 						if dist[node]>=effectivelyNon0BLen or bestTopLength<=effectivelyNon0BLen:
 							differentNode=False
 					if (bestBottomLength<=effectivelyNon0BLen):
-						#while (dist[topNode]<=effectivelyNon0BLen) and (up[topNode]!=None):
-						#	topNode=up[topNode]
-						#if t1==topNode:
 						if t1==originalParent0:
 							differentNode=False
 					#check that placement is not redundant
@@ -7674,16 +7494,6 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 						differentNode=False
 					if dist[t1]<=effectivelyNon0BLen and up[up[t1]]!=None:
 						differentNode=False
-					# check if this is a root placement
-					# if (not rootAlreadyConsidered) and (bestTopLength <= effectivelyNon0BLen):
-					# 	topNode=up[t1]
-					# 	while (dist[topNode]<=effectivelyNon0BLen) and (up[topNode]!=None):
-					# 		topNode=up[topNode]
-					# 	if up[topNode]==None:
-					# 		rootAlreadyConsidered=True
-					# 		listofLKcosts.append(optimizedScore)
-					# 		if networkOutput:
-					# 			listOfProbableNodes.append(topNode)
 					if (not rootAlreadyConsidered) and up[up[t1]]==None and (bestBottomLength>=effectivelyNon0BLen or bestTopLength <= effectivelyNon0BLen):
 						rootAlreadyConsidered=True
 						listofLKcosts.append(optimizedScore)
@@ -7695,7 +7505,8 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 							listOfProbableNodes.append(t1)
 
 	#print("Best placement (node "+str(bestNode)+") scores found: genetic "+str(bestScoreGenetic)+" , HnZ "+str(bestScore0)+" , Time "+str(bestScoreTime)+" , sum "+str(bestScoreGenetic+bestScore0+bestScoreTime)+" , total "+str(bestScore))
-	if aBayesPlusOn and sequentialSearch:
+	#if aBayesPlusOn and sequentialSearch:
+	if aBayesPlusOn:
 		# calculate support(s) and possibly add nodes to the list of alternative placements
 		finalListOfNodes=[]
 		if doTimeTree:
@@ -7707,7 +7518,6 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 			if networkOutput:
 				for i in topNodes:
 					topNodes[i]=topNodes[i]/totSupport
-				#for i in topNodes:
 					if (i!=originalNode) and (topNodes[i]>=minBranchSupport):
 						finalListOfNodes.append((i,topNodes[i]))
 		else:
@@ -7731,16 +7541,9 @@ def findBestParentTopology(tree,node,child,bestLKdiff,removedBLen,mutRate=mutRat
 				if networkOutput:
 					for i in range(len(listofLKcosts)):
 						listofLKcosts[i]=listofLKcosts[i]/totSupport
-					#for i in range(len(listofLKcosts)):
 						if listofLKcosts[i]>=minBranchSupport:
 							finalListOfNodes.append((listOfProbableNodes[i],listofLKcosts[i]))
 		totalTimeFindingParent[0]+=(time()-timeStartParentTopology)
-		#print("Node "+str(children[node][child])+" with support "+str(support)+" final list of nodes:")
-		#print(finalListOfNodes)
-		# print(node)
-		# print(children[node])
-		# print(originalNode)
-		# print()
 		return bestNode, bestScore, bestBranchLengths, finalListOfNodes, support, bestRemovedPartials
 
 	else:
@@ -7779,7 +7582,6 @@ if __name__ == "__main__":
 			if mutations[child1]:
 				vectUp2=passGenomeListThroughBranch(vectUp2,mutations[child1],dirIsUp=True)
 			originalLKcost=findProbRoot(probVect[root],node=root,mutations=mutations,up=up)
-			#originalLKcost=findProbRoot(probVect[root])
 			isTip2=(len(children[child2])==0 and len(minorSequences[child2])==0)
 			isTip1=(len(children[child1])==0 and len(minorSequences[child1])==0)
 			newLower, Lkcontribution=mergeVectors(vectUp1,dist[child2],isTip2,vectUp2,dist[child1],isTip1,returnLK=True,numMinor1=len(minorSequences[child2]),numMinor2=len(minorSequences[child1]))
@@ -7979,10 +7781,7 @@ if __name__ == "__main__":
 		rootVect=rootVector(probVect[root],False,False,tree,root)
 		bestLKdiff=appendProbNode(rootVect,diffs,True,oneMutBLen)
 		if doTimeTree:
-			#print("Calculating cost for appending at root node "+str(root)+" during findBestParentForNewSample")
 			rootVectTime,rootVectTimeCost=mergeVectorsTime(probVectTime[root],0.0,diffsTime,oneMutBLen,mutRate,returnLK=True)
-			#rootVectorTime(probVectTime[root],False,mutRate)
-			#bestLKdiff+=appendProbNodeTime(rootVectTime,diffsTime,mutRate,oneMutBLen)
 			bestLKdiff+=rootVectTimeCost
 		if HnZ:
 			bestLKdiff+=getHnZ(nDesc0[root]+1) - getHnZ(nDesc0[root])
@@ -8115,10 +7914,6 @@ if __name__ == "__main__":
 					initialCost=appendProbNode(upVect,probVect[node],isTip,dist[node])
 					newPartialCost=appendProbNode(upVect,probVect[node],isTip,bestBottomLength+bestTopLength)
 					optimizedScore=appendingCost+newPartialCost-initialCost
-					#if doTimeTree:
-					#	initialCost=appendProbNodeTime(upVectTime,probVectTime[node],mutRate,dist[node])
-					#	newPartialCost=appendProbNodeTime(upVectTime,probVectTime[node],mutRate,bestBottomLength+bestTopLength)
-					#	optimizedScore+=newPartialCost-initialCost
 				else:
 					optimizedScore=appendingCost
 
@@ -8269,10 +8064,7 @@ if __name__ == "__main__":
 			root=node
 			newChildLK=appendProbNode(totRoot,newPartials,True,bestAppendingLength)
 			if doTimeTree:
-				#print("Calculating cost for appending at root node "+str(root)+" during placeSampleOnTree")
-				#totRootTime=rootVectorTime(probVectTime[node],False,mutRate)
 				totRootTime,totRootTimeCost=mergeVectorsTime(probVectTime[node],0.0,newPartialsTime,bestAppendingLength,mutRate,returnLK=True)
-				#newChildLK+=appendProbNodeTime(totRootTime,newPartialsTime,mutRate,bestAppendingLength)
 				newChildLK+=totRootTimeCost
 		else:
 			if children[up[node]][0]==node:
@@ -8340,7 +8132,7 @@ if __name__ == "__main__":
 				probVectRootTime,probRootTime=mergeVectorsTime(probVectTime[node],bestLeftLength,newPartialsTime,bestRightLength,mutRate,returnLK=True)
 				probRoot+=probRootTime
 				probRoot+= findProbRootTime(probVectRootTime)
-				# "+str(len(up))+" during placeSampleOnTree")
+
 				rootUpRightTime=rootVectorTime(newPartialsTime,bestRightLength,mutRate)
 			if HnZ:
 				probRoot+=getHnZ(2)-getHnZ(1)
@@ -8352,7 +8144,6 @@ if __name__ == "__main__":
 				rootUpRight=rootVector(rootNewPartials,bestRightLength,True,tree,node)
 				if doTimeTree:
 					probVectRootTime=mergeVectorsTime(probVectTime[node],bestLeftLength,newPartialsTime,bestRightLength,mutRate)
-					#print("Calculating up right for new root "+str(len(up))+" during placeSampleOnTree")
 					rootUpRightTime=rootVectorTime(newPartialsTime,bestRightLength,mutRate)
 			#now add new root to the tree
 			newRoot=len(up)
@@ -8369,7 +8160,6 @@ if __name__ == "__main__":
 			if doTimeTree:
 				probVectTime[newRoot]=probVectRootTime
 				probVectUpRightTime[newRoot]=rootUpRightTime
-				#print("Calculating up left for new root "+str(newRoot)+" during placeSampleOnTree")
 				probVectUpLeftTime[newRoot]=rootVectorTime(probVectTime[node],bestLeftLength,mutRate)
 			mutations[newRoot]=mutations[node]
 			mutations[node]=[]
@@ -8416,35 +8206,10 @@ if __name__ == "__main__":
 			updatePartials(tree,nodeList)
 			if (not mutations[newRoot]) and nDesc[newRoot]>=maxNumDescendantsForMATClade and numNon4(probVect[newRoot])>minNumNon4:
 				makeNodeReference(tree,newRoot)
-			
-			# print("\n\n Finished placeSampleOnTree, placing new root")
-			# print("names")
-			# print(tree.name)
-			# print("up")
-			# print(tree.up)
-			# print("children")
-			# print(tree.children)
-			# print("probVectTime")
-			# print(tree.probVectTime)
-			# print("dateData")
-			# print(tree.dateData)
-			# print("probVectUpRightTime")
-			# print(tree.probVectUpRightTime)
-			# print("probVectUpLeftTime")
-			# print(tree.probVectUpLeftTime)
-			# print("probVectTotUpTime")
-			# print(tree.probVectTotUpTime)
-			# print("dist")
-			# print(tree.dist)
-			# print("mutRate")
-			# print(mutRate)
-			# print("\n\n")
-
 			return newRoot
 
 		#in all other cases (not attempting to add a new root) create a new internal node in the tree and add sample as a descendant.
 		newInternalNode=len(up)
-		#print(str(dist[node])+" "+str(dist[up[node]])+" "+str(len(children[node]))+" "+str(bestDownLength)+" "+str(bestAppendingLength)+" "+str(bestUpLength)+" "+str(nDesc0[node])+" "+str(nDesc0[up[node]])+" ")
 		tree.addNode()
 		children[up[node]][child]=newInternalNode
 		up[newInternalNode]=up[node]
@@ -8488,7 +8253,6 @@ if __name__ == "__main__":
 			if bestDownLength and (not bestUpLength):
 				descendantsToPass-=1
 				
-		#newNode=Tree(name=sample,dist=bestAppendingLength)
 		newNode=len(up)
 		tree.addNode()
 		name[-1]=sample
@@ -8603,30 +8367,6 @@ if __name__ == "__main__":
 				nDesc[pNode]+=descendantsToPass
 		nodeList=[(node,2,True,doTimeTree),(up[newInternalNode],child,True,doTimeTree)]
 		updatePartials(tree,nodeList)
-
-		# print("\n\n Finished placeSampleOnTree")
-		# print("names")
-		# print(tree.name)
-		# print("up")
-		# print(tree.up)
-		# print("children")
-		# print(tree.children)
-		# print("probVectTime")
-		# print(tree.probVectTime)
-		# print("dateData")
-		# print(tree.dateData)
-		# print("probVectUpRightTime")
-		# print(tree.probVectUpRightTime)
-		# print("probVectUpLeftTime")
-		# print(tree.probVectUpLeftTime)
-		# print("probVectTotUpTime")
-		# print(tree.probVectTotUpTime)
-		# print("dist")
-		# print(tree.dist)
-		# print("mutRate")
-		# print(mutRate)
-		# print("\n\n")
-
 		return None
 
 
@@ -8657,8 +8397,6 @@ if __name__ == "__main__":
 		dist=tree.dist
 		probVect=tree.probVect
 		if doTimeTree:
-			#probVectUpRightTime=tree.probVectUpRightTime
-			#probVectUpLeftTime=tree.probVectUpLeftTime
 			probVectTime=tree.probVectTime
 		minorSequences=tree.minorSequences
 		dirty=tree.dirty
@@ -8690,9 +8428,6 @@ if __name__ == "__main__":
 					bLen2=max(totDist-bLen1,0.0)
 					bLen1=bLen1/lRef
 					bLen2=bLen2/lRef
-					#print(bLen1)
-					#print(bLen2)
-					#print()
 					rootVector,cost=mergeVectors(probVect1,bLen1,fromTip1,probVect2,bLen2,fromTip2,returnLK=True)
 					if mutations[root]:
 						rootVector=passGenomeListThroughBranch(rootVector,mutations[root],dirIsUp=True)
@@ -8711,11 +8446,6 @@ if __name__ == "__main__":
 						bestBL1=bLen1
 
 				bestBL2=max(dist[child1]+dist[child2]-bestBL1,0.0)
-				#print(range(max(1,round(totDist))*2+1))
-				#print("Root bLens: "+str(bestBL1)+" "+str(bestBL2))
-				# if HnZ: #updating nDesc0 in case branch lengths move to 0 or from 0
-				# 	updateNDesc0whenChangingDist(tree,child1,bestBL1)
-				# 	updateNDesc0whenChangingDist(tree,child2,bestBL2)
 				try:
 					if HnZ:
 						updateNDesc0whenChangingDist(tree,child1,bestBL1)
@@ -8750,7 +8480,6 @@ if __name__ == "__main__":
 			if children[children[root][1]]:
 				nodesToTraverse.append(children[children[root][1]][0])
 				nodesToTraverse.append(children[children[root][1]][1])
-			#nodesToTraverse=[children[root][0],children[root][1]]
 		else:
 			return 0
 		while nodesToTraverse:
@@ -8760,13 +8489,9 @@ if __name__ == "__main__":
 				if node==children[up[node]][0]:
 					upVect=probVectUpRight[up[node]]
 					child=0
-					#if doTimeTree:
-					#	upVectTime=probVectUpRightTime[up[node]]
 				else:
 					upVect=probVectUpLeft[up[node]]
 					child=1
-					#if doTimeTree:
-					#	upVectTime=probVectUpLeftTime[up[node]]
 				if mutations[node]:
 					upVect=passGenomeListThroughBranch(upVect,mutations[node],dirIsUp=False)
 				isTip=(len(children[node])==0) and (len(minorSequences[node])==0)
@@ -8775,9 +8500,6 @@ if __name__ == "__main__":
 					if testing or doTimeTree or HnZ:
 						currentCost=appendProbNode(upVect,probVect[node],isTip,dist[node])
 						newCost=appendProbNode(upVect,probVect[node],isTip,bestLength)
-						#if doTimeTree:
-						#	currentCost+=appendProbNodeTime(upVectTime,probVectTime[node],mutRate,dist[node])
-						#	newCost+=appendProbNodeTime(upVectTime,probVectTime[node],mutRate,bestLength)
 						if HnZ:
 							parentNode0=up[node]
 							while (dist[parentNode0]<=effectivelyNon0BLen) and up[parentNode0]!=None:
@@ -8799,8 +8521,6 @@ if __name__ == "__main__":
 					# test also length 0 
 					if HnZ and dist[node]>effectivelyNon0BLen and bestLength>effectivelyNon0BLen:
 						cost0=appendProbNode(upVect,probVect[node],isTip,0.0)
-						#if doTimeTree:
-						#	cost0+=appendProbNodeTime(upVectTime,probVectTime[node],mutRate,0.0)
 						if cost0>-1000000:
 							cost0+=getHnZ(nDesc0[parentNode0]+nDesc0[node]-1)
 							if cost0 > newCost:
@@ -8812,21 +8532,9 @@ if __name__ == "__main__":
 					
 					if bestLength or dist[node]:
 						if (not bestLength) or (not dist[node]) or dist[node]/bestLength>1.01 or dist[node]/bestLength<0.99:
-							#print("\n Updating branch length node "+str(node)+" from "+str(dist[node])+" to "+str(bestLength))
-							#print(tree.children)
-							#print(tree.dist)
-							#print("Changing branch length of node "+str(node)+" with nDesc0 "+str(nDesc0[node])+" and nDesc0 of parent "+str(nDesc0[up[node]])+" from "+str(dist[node])+" to "+str(bestLength))
-							
-							#print(tree.nDesc0)
 							if HnZ: #updating nDesc0 in case branch lengths move to 0 or from 0
 								updateNDesc0whenChangingDist(tree,node,bestLength)
-							#print(tree.nDesc0)
-							#print("")
 							dist[node]=bestLength
-
-							#print("Re-calculating the nDesc0 to check correctness")
-							#calculateNDesc0(tree,t1,checkExisting=True)
-							
 							updates+=1
 							if not fastPass:
 								nodeList=[(node,2,True,doTimeTree),(up[node],child,True,doTimeTree)]
@@ -8992,30 +8700,6 @@ if __name__ == "__main__":
 				else:
 					nDesc0[newRoot]+=nDesc0[appendedNode]
 			updatePartials(tree,nodeList)
-
-			# print("\n\n Finished placing subtree on tree, new root")
-			# print("names")
-			# print(tree.name)
-			# print("up")
-			# print(tree.up)
-			# print("children")
-			# print(tree.children)
-			# print("probVectTime")
-			# print(tree.probVectTime)
-			# print("dateData")
-			# print(tree.dateData)
-			# print("probVectUpRightTime")
-			# print(tree.probVectUpRightTime)
-			# print("probVectUpLeftTime")
-			# print(tree.probVectUpLeftTime)
-			# print("probVectTotUpTime")
-			# print(tree.probVectTotUpTime)
-			# print("dist")
-			# print(tree.dist)
-			# print("mutRate")
-			# print(mutRate)
-			# print("\n\n")
-
 			return newRoot
 
 		#in all other cases (not attempting to add a new root) create a new internal node in the tree and add subtree as a descendant.
@@ -9134,11 +8818,6 @@ if __name__ == "__main__":
 					parent0=up[parent0]
 					if parent0==None:
 						break
-			#if dist[newInternalNode]<=effectivelyNon0BLen:
-				# parent0=newInternalNode
-				# while (dist[parent0]<=effectivelyNon0BLen) and up[parent0]!=None:
-				# 	parent0=up[parent0]
-				# 	nDesc0[parent0]+=nDesc0[newInternalNode]-1
 
 		if (not bestAppendingLength) and (not doTimeTree):
 			probVectTotUp[appendedNode]=None
@@ -9160,43 +8839,7 @@ if __name__ == "__main__":
 		if (not bestDownLength) and (not doTimeTree):
 			probVectTotUp[node]=None
 		nodeList=[(node,2,True,doTimeTree),(up[newInternalNode],child,True,doTimeTree),(appendedNode,2,True,doTimeTree)]
-		updatePartials(tree,nodeList)
-
-		# if appendedNode==11:
-		# 	appendingCostTime=appendProbNodeTime(probVectUpLeftTime[newInternalNode],probVectTime[appendedNode],mutRate,bestAppendingLength)
-		# 	print("In placeSubtreeOnTree, mutRate "+str(mutRate)+", appending length "+str(bestAppendingLength)+", appending cost "+str(appendingCostTime)+" up, down vectors:")
-		# 	print(probVectUpLeftTime[newInternalNode])
-		# 	print(probVectTime[appendedNode])
-		# 	print(probVectTime[node])
-		# 	print(probVectTime[newInternalNode])
-
-		# print("\n\n Finished placing subtree on tree")
-		# print("names")
-		# print(tree.name)
-		# print("up")
-		# print(tree.up)
-		# print("children")
-		# print(tree.children)
-		# print("probVectTime")
-		# print(tree.probVectTime)
-		# print("dateData")
-		# print(tree.dateData)
-		# print("probVectUpRightTime")
-		# print(tree.probVectUpRightTime)
-		# print("probVectUpLeftTime")
-		# print(tree.probVectUpLeftTime)
-		# print("probVectTotUpTime")
-		# print(tree.probVectTotUpTime)
-		# print("dist")
-		# print(tree.dist)
-		# print("mutRate")
-		# print(mutRate)
-		# while up[node]!=None:
-		# 	node=up[node]
-		# print("LK: "+str(calculateTreeLikelihood(tree,node)))
-		# print("Time LK: "+str(calculateTreeLikelihoodTime(tree,node)))
-		# print("\n\n")
-		
+		updatePartials(tree,nodeList)		
 		return None
 
 
@@ -9244,8 +8887,6 @@ if __name__ == "__main__":
 						if nDesc0[parent0]<=0:
 							print("problem removing subtree")
 							raise Exception("exit")
-		#print("CutAndPasteNode nDesc0")
-		#print(nDesc0)
 							
 		up[sibling]=up[parentNode]
 		dist[sibling]=dist[sibling]+dist[parentNode]
@@ -9272,9 +8913,6 @@ if __name__ == "__main__":
 			nodeList=[(sibling,2,True,doTimeTree),(up[sibling],childP,True,doTimeTree)]
 			updatePartials(tree,nodeList)
 		newRoot = placeSubtreeOnTree(tree,bestNode,passedProbVect,node,bestLK,bestBranchLengths,newPartialsTime=passedProbVectTime)
-
-		#print("CutAndPasteNode, after PlaceSubtreeOnTree, nDesc0")
-		#print(nDesc0)
 		
 		topologyChanges[0]+=1
 		if (writeTreesToFileEveryTheseSteps>0) and (topologyChanges[0]%writeTreesToFileEveryTheseSteps)==0:
@@ -9379,7 +9017,6 @@ if __name__ == "__main__":
 					originalLK0=getHnZ(nDesc0[parentNode0]) - ( getHnZ(nDesc0[parentNode0]-nDesc0[node]) + getHnZ(nDesc0[node]) )
 				originalLK+= originalLK0
 			bestCurrentLK=originalLK
-			#print("Node "+str(node)+" Original LK "+str(originalLK)+" made of "+str(geneticLK)+" "+str(originalLKTime)+" "+str(originalLK0)+" ")
 			if ((geneticLK<thresholdTopologyPlacement) or (supportFor0Branches and aBayesPlusOn)) and up[up[node]]!=None:
 				bestCurrenBLen=estimateBranchLengthWithDerivative(vectUp,probVect[node],fromTipC=isTip)
 				if bestCurrenBLen or dist[node]:
@@ -9412,15 +9049,14 @@ if __name__ == "__main__":
 						if HnZ:
 							originalLK0=bestCurrentLK0
 						geneticLK=bestCurrentLKGen
-						#print(" updated original LK "+str(bestCurrenBLen)+" "+str(dist[node]))
-						#print("Node "+str(node)+" Original LK "+str(bestCurrentLK)+" made of "+str(geneticLK)+" "+str(originalLKTime)+" "+str(originalLK0)+" ")
 					if bestCurrentLK==float("-inf"):
 						print("Found an infinite cost of bestCurrentLK "+str(bestCurrentLK)+" using appendProbNode()")
 						raise Exception("exit")
 
 			topologyUpdated=False
 			# in case of HnZ, also try to replace 0-cost subtrees, as they might have better modifers somewhere else
-			if ((bestCurrentLK<thresholdTopologyPlacement) and (not doNotImproveTopology)) or dist[node] or (supportFor0Branches and aBayesPlusOn) or HnZ or doTimeTree:
+			if ((bestCurrentLK<thresholdTopologyPlacement or dist[node] or HnZ or doTimeTree) and (not doNotImproveTopology)) or ((dist[node] or supportFor0Branches) and aBayesPlusOn) :
+			#if ((bestCurrentLK<thresholdTopologyPlacement) and (not doNotImproveTopology)) or dist[node] or (supportFor0Branches and aBayesPlusOn) or HnZ or doTimeTree:
 				#now find the best place on the tree where to re-attach the subtree rooted at "node"
 				#but to do that we need to consider new vector probabilities after removing the node that we want to replace
 				# this is done using findBestParentTopology().
@@ -9619,6 +9255,9 @@ def startTopologyUpdatesParallel(inputTuple):
 	nDesc0=tree.nDesc0
 	nodesToVisit=[startingNode]
 	proposedMoves=[]
+	if aBayesPlus:
+		aBayesPlusOn=True
+		SPRTAreporting=[]
 	nodesSearched=0
 
 	if usingErrorRate:
@@ -9637,6 +9276,8 @@ def startTopologyUpdatesParallel(inputTuple):
 		if dirty[node] and replacements[node]<=maxReplacements and coreNum[node]==corNum:
 			#placement,improvement=traverseTreeForTopologyUpdateParallel(newNode,strictTopologyStopRules=strictTopologyStopRules,allowedFailsTopology=allowedFailsTopology,thresholdLogLKtopology=thresholdLogLKtopology,thresholdTopologyPlacement=thresholdTopologyPlacement)
 			placement=None
+			branchSupport=None
+			listOfBestPlacements=[]
 			improvement=0
 			# we avoid the root node since it cannot be re-placed with SPR moves
 			if up[node]!=None:
@@ -9660,8 +9301,6 @@ def startTopologyUpdatesParallel(inputTuple):
 				bestCurrenBLen=dist[node]
 				isTip=(len(children[node])==0) and (len(minorSequences[node])==0)
 				bestCurrentLK=appendProbNode(vectUp,probVect[node],isTip,bestCurrenBLen,errorRateGlobalPassed=errorRateGlobal,mutMatrixGlobalPassed=mutMatrixGlobal,errorRatesGlobal=errorRates,mutMatricesGlobal=mutMatrices,totErrorPassed=totErrorPassed)
-				#if doTimeTree:
-				#	bestCurrentLK+=appendProbNodeTime(vectUpTime,probVectTime[node],mutRate,bestCurrenBLen)
 				if doTimeTree:
 					if up[parentNode]==None:
 						bestCurrentLK+=mergeVectorsTime(probVectTime[node],dist[node],probVectTime[sibling],dist[sibling],mutRate,returnLK=True,isUpDown=False)[1]
@@ -9687,12 +9326,13 @@ def startTopologyUpdatesParallel(inputTuple):
 
 				topologyUpdated=False
 				#in case of HnZ, also try to replace 0-cost subtrees, as they might have better modifers somewhere else
-				if (bestCurrentLK<thresholdTopologyPlacement) or HnZ:# or (supportFor0Branches and aBayesPlusOn):
+				if ((bestCurrentLK<thresholdTopologyPlacement or dist[node] or HnZ or doTimeTree) and (not doNotImproveTopology)) or ((dist[node] or supportFor0Branches) and aBayesPlusOn) :
+				#if (bestCurrentLK<thresholdTopologyPlacement) or HnZ:# or (supportFor0Branches and aBayesPlusOn):
 					#now find the best place on the tree where to re-attach the subtree rooted at "node"
 					#but to do that we need to consider new vector probabilities after removing the node that we want to replace
 					# this is done using findBestParentTopology().
 					try:
-						bestNodeSoFar , bestLKdiff , bestBranchLengths, listOfBestPlacements, branchSupport, passedProbVect = findBestParentTopology(tree,parentNode,child,bestCurrentLK,bestCurrenBLen,mutRate=mutRate,strictTopologyStopRules=strictTopologyStopRules,allowedFailsTopology=allowedFailsTopology,thresholdLogLKtopology=thresholdLogLKtopology,sequentialSearch=False  ,errorRateGlobalPassed=errorRateGlobal,mutMatrixGlobalPassed=mutMatrixGlobal,errorRatesGlobal=errorRates,mutMatricesGlobal=mutMatrices,cumulativeRateGlobal=cumulativeRate,cumulativeErrorRateGlobal=cumulativeErrorRate,totErrorPassed=totErrorPassed)
+						bestNodeSoFar , bestLKdiff , bestBranchLengths, listOfBestPlacements, branchSupport, passedProbVect = findBestParentTopology(tree,parentNode,child,bestCurrentLK,bestCurrenBLen,mutRate=mutRate,strictTopologyStopRules=strictTopologyStopRules,allowedFailsTopology=allowedFailsTopology,thresholdLogLKtopology=thresholdLogLKtopology,errorRateGlobalPassed=errorRateGlobal,mutMatrixGlobalPassed=mutMatrixGlobal,errorRatesGlobal=errorRates,mutMatricesGlobal=mutMatrices,cumulativeRateGlobal=cumulativeRate,cumulativeErrorRateGlobal=cumulativeErrorRate,totErrorPassed=totErrorPassed) # ,sequentialSearch=False
 						if (bestLKdiff+thresholdTopologyPlacement>bestCurrentLK) and (not doNotImproveTopology):
 							topologyUpdated=True
 							topNode=up[node]
@@ -9717,11 +9357,23 @@ def startTopologyUpdatesParallel(inputTuple):
 								placement=bestNodeSoFar
 					except:
 						placement=None
-				
+				if branchSupport!=None and aBayesPlusOn:
+					if networkOutput:
+						SPRTAreporting.append((node,branchSupport,listOfBestPlacements))
+						#print("added ")
+						#print((node,branchSupport,listOfBestPlacements))
+						#print("",flush=True)
+						#alternativePlacements[node]=listOfBestPlacements
+					else:
+						SPRTAreporting.append((node,branchSupport,None))
+					#support[node]=branchSupport
 				if placement!=None and (not doNotImproveTopology):
 					proposedMoves.append((node,placement,improvement))
 	print("Searched "+str(nodesSearched)+" nodes within core "+str(corNum)+" and found "+str(len(proposedMoves))+" proposed SPR moves")
-	return proposedMoves
+	if aBayesPlusOn:
+		return (proposedMoves,SPRTAreporting)
+	else:
+		return proposedMoves
 
 
 if __name__ == "__main__":
@@ -10071,6 +9723,7 @@ def passMutationListThroughBranch(mutations1,mutations2,dirIsUp=False):
 				break
 
 	return finalMutations
+
 
 
 
@@ -11032,8 +10685,12 @@ if __name__ == "__main__":
 			oldLK=float("-inf")
 			numEMsteps=0
 			while (newLk-oldLK>1.0) and numEMsteps<20:
-				setAllDirty(tree,t1)
-				improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
+				if not doNotOptimiseBLengths:
+					setAllDirty(tree,t1)
+					improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
+					if doTimeTree:
+						reCalculateAllGenomeListsTime(tree,t1,mutRate)
+						print("Time LK: "+str(calculateTreeLikelihoodTime(tree,t1,mutRate)))
 				reCalculateAllGenomeLists(tree,t1)
 				newLkBranch=calculateTreeLikelihood(tree,t1)
 				print("Updated "+str(improvement)+" branch lengths leading to LK "+str(newLkBranch))
@@ -11073,11 +10730,6 @@ if __name__ == "__main__":
 		timeRecalculation=time()-start
 		print("New time LK step "+str(numEMsteps)+" mutRate "+str(mutRate)+": "+str(newLk))
 		print("Time to run initial tree time EM estimation: "+str(timeRecalculation))
-
-	#TODO TODO TODO remove
-	#TODO TODO TODO
-	#TODO TODO TODO
-	#minNumSamplesForMutRate=2
 
 	#Place input samples to create an initial tree (or extend the input tree).
 	timeFinding=0.0
@@ -11124,6 +10776,9 @@ if __name__ == "__main__":
 				reCalculateAllGenomeLists(tree,t1)
 				improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
 				reCalculateAllGenomeLists(tree,t1)
+				if doTimeTree:
+					reCalculateAllGenomeListsTime(tree,t1,mutRate)
+					print("Time LK: "+str(calculateTreeLikelihoodTime(tree,t1,mutRate)))
 				print(" EM to update parameters during initial placement terminated, time taken: "+str(time()-start))
 
 			if (doTimeTree and (numSamples>minNumSamplesForMutRate) and (numSamples>2*lastUpdateNumSamplesTime)):
@@ -11196,10 +10851,15 @@ if __name__ == "__main__":
 		reCalculateAllGenomeLists(tree,t1)
 		newLk=calculateTreeLikelihood(tree,t1)
 		print("Tree LK after first errors EM: "+str(newLk))
-		improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
-		reCalculateAllGenomeLists(tree,t1)
-		newLk=calculateTreeLikelihood(tree,t1)
-		print("Tree LK after branch length optimization: "+str(newLk))
+		if not doNotOptimiseBLengths:
+			improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
+			reCalculateAllGenomeLists(tree,t1)
+			newLk=calculateTreeLikelihood(tree,t1)
+			print("Tree LK after branch length optimization: "+str(newLk))
+
+			if doTimeTree:
+				reCalculateAllGenomeListsTime(tree,t1,mutRate)
+				print("Time LK: "+str(calculateTreeLikelihoodTime(tree,t1,mutRate)))
 
 
 	data.clear()
@@ -11238,20 +10898,22 @@ if __name__ == "__main__":
 			reCalculateAllGenomeLists(tree,t1)
 			newLk=calculateTreeLikelihood(tree,t1)
 			print("Tree LK after EM: "+str(newLk))
-			setAllDirty(tree,t1)
-			improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
-			reCalculateAllGenomeLists(tree,t1)
-			newLk=calculateTreeLikelihood(tree,t1)
-			print("Tree LK after branch length optimization: "+str(newLk))
+			if not doNotOptimiseBLengths:
+				setAllDirty(tree,t1)
+				improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
+				reCalculateAllGenomeLists(tree,t1)
+				newLk=calculateTreeLikelihood(tree,t1)
+				print("Tree LK after branch length optimization: "+str(newLk))
 			if estimateErrorRate or estimateSiteSpecificErrorRate:
 				oldLK=float("-inf")
 				numEMsteps=0
 				while (newLk-oldLK>1.0) and numEMsteps<20:
-					setAllDirty(tree,t1)
-					improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
-					reCalculateAllGenomeLists(tree,t1)
-					newLkBranch=calculateTreeLikelihood(tree,t1)
-					print("Updated "+str(improvement)+" branch lengths leading to LK "+str(newLkBranch))
+					if not doNotOptimiseBLengths:
+						setAllDirty(tree,t1)
+						improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
+						reCalculateAllGenomeLists(tree,t1)
+						newLkBranch=calculateTreeLikelihood(tree,t1)
+						print("Updated "+str(improvement)+" branch lengths leading to LK "+str(newLkBranch))
 
 					mutMatrixGlobal, siteRates, errorRateGlobal, errorRates = expectationMaximizationCalculationRates(tree,t1)
 					updateMutMatrices(mutMatrixGlobal,siteRates=siteRates)
@@ -11279,21 +10941,22 @@ if __name__ == "__main__":
 		print("Ns per node: "+str(float(numNodes[3])/numNodes[0]))
 		print("MAT mutations per node: "+str(float(numNodes[5])/numNodes[0]))
 
-		start=time()
-		newLk=calculateTreeLikelihood(tree,t1)
-		print("Now proper branch length optimization, LK before: "+str(newLk))
-		setAllDirty(tree,t1)
-		improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
-		subRound=0
-		while subRound<20:
-			if (not improvement):
-				break
-			subRound+=1
+		if not doNotOptimiseBLengths:
+			start=time()
+			newLk=calculateTreeLikelihood(tree,t1)
+			print("Now proper branch length optimization, LK before: "+str(newLk))
+			setAllDirty(tree,t1)
 			improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
-		newLk=calculateTreeLikelihood(tree,t1)
-		print("branch length finalization subround "+str(subRound+1)+", number of changes "+str(improvement)+" final LK: "+str(newLk))
-		timeForBranchOptimization=(time()-start)
-		print("Time for updating branch lengths: "+str(timeForBranchOptimization))
+			subRound=0
+			while subRound<20:
+				if (not improvement):
+					break
+				subRound+=1
+				improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
+			newLk=calculateTreeLikelihood(tree,t1)
+			print("branch length finalization subround "+str(subRound+1)+", number of changes "+str(improvement)+" final LK: "+str(newLk))
+			timeForBranchOptimization=(time()-start)
+			print("Time for updating branch lengths: "+str(timeForBranchOptimization))
 
 
 	if HnZ:
@@ -11361,10 +11024,11 @@ if __name__ == "__main__":
 				reCalculateAllGenomeLists(tree,t1)
 				newLk=calculateTreeLikelihood(tree,t1)
 				print("Tree LK after EM: "+str(newLk))
-			improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
-			reCalculateAllGenomeLists(tree,t1)
-			newLk=calculateTreeLikelihood(tree,t1)
-			print("Tree LK after branch length optimization: "+str(newLk))
+			if not doNotOptimiseBLengths:
+				improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
+				reCalculateAllGenomeLists(tree,t1)
+				newLk=calculateTreeLikelihood(tree,t1)
+				print("Tree LK after branch length optimization: "+str(newLk))
 
 			print("Looking a second time for possible better root", flush=True)
 			newT1=findBestRoot(tree,t1,strictTopologyStopRules=strictTopologyStopRules,allowedFailsTopology=allowedFailsTopology,thresholdLogLKtopology=thresholdLogLKtopology,aBayesPlusOn=aBayesPlus)
@@ -11714,11 +11378,6 @@ if __name__ == "__main__":
 				tree.alternativePlacements.append([])
 
 
-	#TODO TODO TODO
-	# modify initial tree to see if SPRs can recover better topology
-	#TODO TODO TODO
-
-
 	#Run rounds of SPR topological improvements
 	for nRound in range(nRounds):
 
@@ -11732,20 +11391,21 @@ if __name__ == "__main__":
 		if HnZ:
 			print("Re-calculating the nDesc0")
 			calculateNDesc0(tree,t1,checkExisting=True)
-		newLk=calculateTreeLikelihood(tree,t1)
-		print("Preliminary branch length optimization from LK: "+str(newLk))
-		improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
-		print("Branch length optimization, number of changes: "+str(improvement))
-		subRound=0
-		while subRound<20:
-			if (not improvement):
-				break
-			subRound+=1
+		if not doNotOptimiseBLengths:
+			newLk=calculateTreeLikelihood(tree,t1)
+			print("Preliminary branch length optimization from LK: "+str(newLk))
 			improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
-		newLk=calculateTreeLikelihood(tree,t1)
-		print("branch length finalization subround "+str(subRound+1)+" number of changes "+str(improvement)+" final LK: "+str(newLk), flush=True)
-		timeForBranchOptimization=(time()-start)
-		print("Time for updating branch lengths: "+str(timeForBranchOptimization))
+			print("Branch length optimization, number of changes: "+str(improvement))
+			subRound=0
+			while subRound<20:
+				if (not improvement):
+					break
+				subRound+=1
+				improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
+			newLk=calculateTreeLikelihood(tree,t1)
+			print("branch length finalization subround "+str(subRound+1)+" number of changes "+str(improvement)+" final LK: "+str(newLk), flush=True)
+			timeForBranchOptimization=(time()-start)
+			print("Time for updating branch lengths: "+str(timeForBranchOptimization))
 		if HnZ:
 			print("Re-calculating the nDesc0")
 			calculateNDesc0(tree,t1,checkExisting=True)
@@ -11761,35 +11421,6 @@ if __name__ == "__main__":
 			reCalculateAllGenomeListsTime(tree,t1,mutRate)
 			print("Time LK: "+str(calculateTreeLikelihoodTime(tree,t1,mutRate)))
 
-
-		# print("\n\n Round "+str(nRound)+" topological improvement")
-		# # print("names")
-		# # print(tree.name)
-		# print("up")
-		# print(tree.up)
-		# print("children")
-		# print(tree.children)
-		# # print("probVectTime")
-		# # print(tree.probVectTime)
-		# print("dateData")
-		# print(tree.dateData)
-		# # print("probVectUpRightTime")
-		# # print(tree.probVectUpRightTime)
-		# # print("probVectUpLeftTime")
-		# # print(tree.probVectUpLeftTime)
-		# # print("probVectTotUpTime")
-		# # print(tree.probVectTotUpTime)
-		# print("dist")
-		# print(tree.dist)
-		# print("mutRate")
-		# print(mutRate)
-		# print("minorSequences")
-		# print(tree.minorSequences)
-		# print("Time LK: "+str(calculateTreeLikelihoodTime(tree,t1)))
-		# debugging=True
-		# print("\n\n")
-
-
 		if parallelize:
 			#assign numbers to nodes so that each core will only investigate re-placement of its own nodes
 			if nRound==0:
@@ -11801,13 +11432,29 @@ if __name__ == "__main__":
 				#with Pool(initializer=init_worker, initargs=(ref,mutMatrixGlobal,siteRates,errorRates,errorRateGlobal)) as pool:
 				with Pool() as pool:
 					results = pool.map(startTopologyUpdatesParallel, paralleleInputs)
-			for i in range(numCores-1):
-				results[0].extend(results[i+1])
-			results[0].sort(reverse=False,key=itemgetter(2))
+			if aBayesPlusOn:
+				improvementsFound=[]
+				for i in range(numCores):
+					improvementsFound.extend(results[i][0])
+					for altPlac in results[i][1]:
+						tree.support[altPlac[0]]=altPlac[1]
+						if networkOutput:
+							tree.alternativePlacements[altPlac[0]]=altPlac[2]
+						#print("Number of SPRTA results found in parallel search")
+						#print(len(results[i][1]))
+						#for exa in range(10):
+						#	print(results[i][1][exa])
+			else:
+				#print("aBayesPlusOn not on outside of parallelized bit")
+				for i in range(numCores-1):
+					results[0].extend(results[i+1])
+				improvementsFound=results[0]
+
+			improvementsFound.sort(reverse=False,key=itemgetter(2))
 			totalTimeFindingParent[0]+=time()-start
 			print("Found proposed SPR moves, merged, and sorted.")
 			setAllDirty(tree,t1,dirtiness=False)
-			newRoot, improvement = applySPRMovesParallel(tree,results[0],strictTopologyStopRules=threshStricts[nRound],allowedFailsTopology=threshNums[nRound],thresholdLogLKtopology=threshValues[nRound],thresholdTopologyPlacement=threshPlaces[nRound])
+			newRoot, improvement = applySPRMovesParallel(tree,improvementsFound,strictTopologyStopRules=threshStricts[nRound],allowedFailsTopology=threshNums[nRound],thresholdLogLKtopology=threshValues[nRound],thresholdTopologyPlacement=threshPlaces[nRound])
 		else:
 			newRoot,improvement=startTopologyUpdates(tree,t1,checkEachSPR=debugging,strictTopologyStopRules=threshStricts[nRound],allowedFailsTopology=threshNums[nRound],thresholdLogLKtopology=threshValues[nRound],thresholdTopologyPlacement=threshPlaces[nRound])
 		if newRoot!=None:
@@ -11847,13 +11494,23 @@ if __name__ == "__main__":
 					#with Pool(initializer=init_worker, initargs=(ref,mutMatrixGlobal,siteRates,errorRates,errorRateGlobal)) as pool:
 					with Pool() as pool:
 						results = pool.map(startTopologyUpdatesParallel, paralleleInputs)
-				for i in range(numCores-1):
-					results[0].extend(results[i+1])
-				results[0].sort(reverse=False,key=itemgetter(2))
+				if aBayesPlusOn:
+					improvementsFound=[]
+					for i in range(numCores):
+						improvementsFound.extend(results[i][0])
+						for altPlac in results[i][1]:
+							tree.support[altPlac[0]]=altPlac[1]
+							if networkOutput:
+								tree.alternativePlacements[altPlac[0]]=altPlac[2]
+				else:
+					for i in range(numCores-1):
+						results[0].extend(results[i+1])
+					improvementsFound=results[0]
+				improvementsFound.sort(reverse=False,key=itemgetter(2))
 				totalTimeFindingParent[0]+=time()-start
 				print("Found proposed SPR moves, merged, and sorted.")
 				setAllDirty(tree,t1,dirtiness=False)
-				newRoot, improvement = applySPRMovesParallel(tree,results[0],strictTopologyStopRules=threshStricts[nRound],allowedFailsTopology=threshNums[nRound],thresholdLogLKtopology=threshValues[nRound],thresholdTopologyPlacement=threshPlaces[nRound])
+				newRoot, improvement = applySPRMovesParallel(tree,improvementsFound,strictTopologyStopRules=threshStricts[nRound],allowedFailsTopology=threshNums[nRound],thresholdLogLKtopology=threshValues[nRound],thresholdTopologyPlacement=threshPlaces[nRound])
 			else:
 				newRoot,improvement=startTopologyUpdates(tree,t1,checkEachSPR=debugging,strictTopologyStopRules=threshStricts[nRound],allowedFailsTopology=threshNums[nRound],thresholdLogLKtopology=threshValues[nRound],thresholdTopologyPlacement=threshPlaces[nRound])
 			if newRoot!=None:
@@ -11891,11 +11548,12 @@ if __name__ == "__main__":
 			print("Initial LK after first error rates EM: "+str(newLk))
 			numEMsteps=0
 			while (newLk-oldLK>1.0) and numEMsteps<20:
-				setAllDirty(tree,t1)
-				improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
-				reCalculateAllGenomeLists(tree,t1)
-				newLkBranch=calculateTreeLikelihood(tree,t1)
-				print("Updated "+str(improvement)+" branch lengths leading to LK "+str(newLkBranch), flush=True)
+				if not doNotOptimiseBLengths:
+					setAllDirty(tree,t1)
+					improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
+					reCalculateAllGenomeLists(tree,t1)
+					newLkBranch=calculateTreeLikelihood(tree,t1)
+					print("Updated "+str(improvement)+" branch lengths leading to LK "+str(newLkBranch), flush=True)
 
 				mutMatrixGlobal, siteRates, errorRateGlobal, errorRates = expectationMaximizationCalculationRates(tree,t1)
 				updateMutMatrices(mutMatrixGlobal,siteRates=siteRates)
@@ -11914,27 +11572,28 @@ if __name__ == "__main__":
 			print("Error rate: "+str(errorRateGlobal), flush=True)
 
 		# update just branch lengths
-		start=time()
-		reCalculateAllGenomeLists(tree,t1)
-		newLk=calculateTreeLikelihood(tree,t1)
-		setAllDirty(tree,t1)
-		print(" branch length optimization starting from LK "+str(newLk), flush=True)
-		improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
-		print("Branch length optimization round 1, number of changes: "+str(improvement))
-		subRound=0
-		while subRound<20:
-			if (not improvement):
-				break
-			subRound+=1
+		if not doNotOptimiseBLengths:
+			start=time()
+			reCalculateAllGenomeLists(tree,t1)
+			newLk=calculateTreeLikelihood(tree,t1)
+			setAllDirty(tree,t1)
+			print(" branch length optimization starting from LK "+str(newLk), flush=True)
 			improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
-		reCalculateAllGenomeLists(tree,t1)
-		newLk=calculateTreeLikelihood(tree,t1)
-		print("branch length finalization subround "+str(subRound+1)+" number of changes "+str(improvement)+" final LK: "+str(newLk))
-		if doTimeTree:
-			reCalculateAllGenomeListsTime(tree,t1,mutRate)
-			print("Time LK: "+str(calculateTreeLikelihoodTime(tree,t1,mutRate)))
-		timeForBranchOptimization=(time()-start)
-		print("Time for updating branch lengths: "+str(timeForBranchOptimization), flush=True)
+			print("Branch length optimization round 1, number of changes: "+str(improvement), flush=True)
+			subRound=0
+			while subRound<20:
+				if (not improvement):
+					break
+				subRound+=1
+				improvement=traverseTreeToOptimizeBranchLengths(tree,t1)
+			reCalculateAllGenomeLists(tree,t1)
+			newLk=calculateTreeLikelihood(tree,t1)
+			print("branch length finalization subround "+str(subRound+1)+" number of changes "+str(improvement)+" final LK: "+str(newLk))
+			if doTimeTree:
+				reCalculateAllGenomeListsTime(tree,t1,mutRate)
+				print("Time LK: "+str(calculateTreeLikelihoodTime(tree,t1,mutRate)))
+			timeForBranchOptimization=(time()-start)
+			print("Time for updating branch lengths: "+str(timeForBranchOptimization), flush=True)
 		if HnZ:
 			print("Re-calculating the nDesc0")
 			calculateNDesc0(tree,t1,checkExisting=True)
@@ -12116,10 +11775,6 @@ if __name__ == "__main__":
 	print("Time spent in total updating the topology and branch lengths: "+str(timeTopology))
 	print("Of which looking for placements for better topologies: "+str(totalTimeFindingParent[0]))
 
-	#print(tree.dist)
-	#print(tree.up)
-	#print(tree.children)
-
 	exit()
 
 if rateVariation:
@@ -12134,6 +11789,8 @@ if errorRateSiteSpecificFile or errorRateFixed or estimateErrorRate or estimateS
 	usingErrorRate=True
 else:
 	usingErrorRate=False
+if aBayesPlus:
+	aBayesPlusOn=True
 
 
 
