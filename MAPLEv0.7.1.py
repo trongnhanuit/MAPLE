@@ -11010,11 +11010,49 @@ if __name__ == "__main__":
 		return chunk_output
 
 
+	# extract list of mutations from two genomes
+	def extractMutations(probVect1, probVect2):
+		mutations_list = []
+		indexEntry1, indexEntry2, pos = 0, 0, 0
+		entry1 = probVect1[indexEntry1]
+		entry2 = probVect2[indexEntry2]
+		while True:
+			if entry1[0] != entry2[0] and entry1[0] < 5 and entry2[0] < 5:
+				if entry1[0] == 4:
+					mutations_list.append((entry2[1], entry2[0], pos + 1))
+				elif entry2[0] == 4:
+					mutations_list.append((entry1[0], entry1[1], pos + 1))
+				else:
+					mutations_list.append((entry1[0], entry2[0], pos + 1))
+				pos += 1
+			else:
+				if (entry1[0] == 4 or entry1[0] == 5) and (entry2[0] == 4 or entry2[0] == 5):
+					pos = min(entry1[1], entry2[1])
+				else:
+					pos += 1
+
+			if pos == lRef:
+				break
+			if entry1[0] < 4 or entry1[0] == 6:
+				indexEntry1 += 1
+				entry1 = probVect1[indexEntry1]
+			elif pos == entry1[1]:
+				indexEntry1 += 1
+				entry1 = probVect1[indexEntry1]
+			if entry2[0] < 4 or entry2[0] == 6:
+				indexEntry2 += 1
+				entry2 = probVect2[indexEntry2]
+			elif pos == entry2[1]:
+				indexEntry2 += 1
+				entry2 = probVect2[indexEntry2]
+		return mutations_list
+
 	# seek placements for lineage reference genomes
 	#NHAN
 	def seekPlacementOfLineageRefs(tree, t1, lineageRefData, numCores, findPlacementOnly):
 		#dist = tree.dist
 		#up = tree.up
+		probVect = tree.probVect
 		# create a map from a lineage to its possible placements
 		tree.lineagePlacements = {}
 		lineageRefNames = list(lineageRefData.keys())
@@ -11029,13 +11067,12 @@ if __name__ == "__main__":
 
 		for chunk_output in results:
 			for lineageRefName, sortedPlacements in chunk_output:
-				# delete lineage genome that is already processed
-				lineageRefData[lineageRefName] = None
-
-				lineageRootPosition = None
+				# extract the best placement (with the highest support)
+				selectedPlacement = sortedPlacements[0][0]
+				# conduct lineage assignment if needed
 				if not findPlacementOnly:
-					# extract the best placement (with the highest support)
-					selectedPlacement = sortedPlacements[0][0]
+					lineageRootPosition = None
+					# extract support and optimized blengths of the best placement
 					selectedPlacementSupport = sortedPlacements[0][1]
 					topBlength, bottomBlength, appendingBlength = sortedPlacements[0][2]
 
@@ -11050,8 +11087,25 @@ if __name__ == "__main__":
 						tree.lineageAssignments[selectedPlacement].append([lineageRefName, bottomBlength])
 						lineageRootPosition = selectedPlacement
 
-				# update the list of possible placements for this lineage
-				tree.lineagePlacements[lineageRefName] = (sortedPlacements, lineageRootPosition)
+					# update the list of possible placements for this lineage
+					tree.lineagePlacements[lineageRefName] = (sortedPlacements, lineageRootPosition)
+
+				# otherwise, extract the list of mutations that separate the sample from the placement
+				else:
+					# extract sample genome
+					samplePartials = probVectTerminalNode(lineageRefData[lineageRefName], None, None)
+
+					# extract partial of the placement that separate the sample from the placement
+					placementPartials = probVect[selectedPlacement]
+
+					# extract list of mutations
+					mutations_list = extractMutations(placementPartials, samplePartials)
+
+					# update the list of possible placements for this sample
+					tree.lineagePlacements[lineageRefName] = (sortedPlacements, mutations_list)
+
+				# delete lineage genome that is already processed
+				lineageRefData[lineageRefName] = None
 
 		if not findPlacementOnly:
 			# a node may be assigned multiple lineages
@@ -11261,16 +11315,21 @@ if __name__ == "__main__":
 	# Write sample placements to output file
 	# NHAN
 	def outputSamplePlacements(outputFile, tree, root):
+		nucletides = "ACGT"
 		# write TSV mapping from lineage to its possible placements
 		giveInternalNodeNames(tree, t1, namesInTree=namesInTree, replaceNames=False)
 		name = tree.name
 		file = open(outputFile + "_metaData_samplePlacements.tsv", "w")
 		lineagePlacements = tree.lineagePlacements
-		file.write("sample\tplacements\toptimizedBlengths\n")
+		# sample: Names of samples in S
+		# possiblePlacements: a set of possible placements for each sample. Each placement is presented as <placementNode>:<support>.
+		# optimizedBlengths: the corresponding set of optimized branch lengths of possible placements. Each placement contains a set of three branch lengths and is presented as: <placementNode>:(<topBlength>/<bottomBlength>/<sampleBlength>).
+		# mutations: a list of mutations that separates the sample from the most similar genome (i.e., placement's partials). Each mutation is present as <stateAtPlacement><Position><stateAtSample>
+		file.write("sample\tplacements\toptimizedBlengths\tmutations\n")
 		for key in lineagePlacements:
 			placementStrVec = []
 			placementBlengthsVec = []
-			plausiblePlacements, lineageRootPosition = lineagePlacements[key]
+			plausiblePlacements, mutations_list = lineagePlacements[key]
 			for placement, support, optimizedBlengths in plausiblePlacements:
 				placementStrVec.append(f"{namesInTree[name[placement]]}:{str(support)}")
 				blengthsVec = []
@@ -11284,7 +11343,14 @@ if __name__ == "__main__":
 
 			placementStr = ";".join(placementStrVec)
 			placementBlengthsStr = ";".join(placementBlengthsVec)
-			file.write(key + "\t" + placementStr + "\t" + placementBlengthsStr + "\n")
+
+			# convert list of mutations into a string
+			mutationStrVec = []
+			for from_state, to_state, position in mutations_list:
+				mutationStrVec.append(f"{nucletides[from_state]}{position}{nucletides[to_state]}")
+			mutationStr = ";".join(mutationStrVec)
+
+			file.write(key + "\t" + placementStr + "\t" + placementBlengthsStr + "\t" + mutationStr + "\n")
 
 		# close the output file
 		file.close()
