@@ -84,6 +84,8 @@ parser.add_argument('--lineageRefs',default="", help='give path and name to an a
 parser.add_argument('--lineageRefsThresh',default=0.2, help='The threshold (in term of #mutation) to check whether a reference lineage genome could be considered as the parent of a subtree. Default: 0.2 mutation', type = float)
 parser.add_argument('--lineageRefsSupportThresh',default=0.95, help='A lineage will be assigned to a subtree only if the SPRTA support for that lineage placement exceeds this threshold. Default: 0.95', type = float)
 parser.add_argument('--allowMultiLineagesPerNode', help='When a node is selected as the best placements for multiple lineages, whether we allow assigning all of these lineages (or only the closest lineage) to the subtree. Default: assigning the closet lineage', action="store_true")
+# find placements (in an input tree) for new samples (without changing the input tree ~ find placements only) - NHAN
+parser.add_argument('--findSamplePlacements', help='Find placements (in an input tree) for new samples (without changing the input tree ~ find placements only)', action="store_true")
 
 #rarer options
 parser.add_argument("--defaultBLen",help="Default length of branches, for example when the input tree has no branch length information.",  type=float, default=0.000033)
@@ -138,6 +140,7 @@ lineageRefsThresh = args.lineageRefsThresh
 lineageRefsSupportThresh = args.lineageRefsSupportThresh
 allowMultiLineagesPerNode = args.allowMultiLineagesPerNode
 performLineageAssignmentByRefPlacement = (lineageRefs != "")
+findSamplePlacements = args.findSamplePlacements
 allowedFails=args.allowedFails
 allowedFailsTopology=args.allowedFailsTopology
 model=args.model
@@ -282,7 +285,7 @@ if __name__ == "__main__":
 	aBayesPlusOn=False
 else:
 	aBayesPlusOn=aBayesPlus
-if aBayesPlus or doTimeTree or performLineageAssignmentByRefPlacement:
+if aBayesPlus or doTimeTree or performLineageAssignmentByRefPlacement or findSamplePlacements:
 	from math import exp
 
 warnedBLen=[False]
@@ -11009,7 +11012,7 @@ if __name__ == "__main__":
 
 	# seek placements for lineage reference genomes
 	#NHAN
-	def seekPlacementOfLineageRefs(tree, t1, lineageRefData, numCores):
+	def seekPlacementOfLineageRefs(tree, t1, lineageRefData, numCores, findPlacementOnly):
 		#dist = tree.dist
 		#up = tree.up
 		# create a map from a lineage to its possible placements
@@ -11029,45 +11032,47 @@ if __name__ == "__main__":
 				# delete lineage genome that is already processed
 				lineageRefData[lineageRefName] = None
 
-				# extract the best placement (with the highest support)
-				selectedPlacement = sortedPlacements[0][0]
-				selectedPlacementSupport = sortedPlacements[0][1]
-				topBlength, bottomBlength, appendingBlength = sortedPlacements[0][2]
-
-				# append the lineage assignment into the selected node
 				lineageRootPosition = None
-				if appendingBlength <= lineageRefsThresh and selectedPlacementSupport >= lineageRefsSupportThresh:
-					# if topBlength == 0, we already record the parent instead of the original placement, so no further processing needed
-					# if not topBlength and up[selectedPlacement]:
-					#	selectedPlacement = up[selectedPlacement]
-					# traverse upward to the top of the polytomy
-					#	while (dist[selectedPlacement] <= effectivelyNon0BLen) and (up[selectedPlacement] != None):
-					#		selectedPlacement = up[selectedPlacement]
-					tree.lineageAssignments[selectedPlacement].append([lineageRefName, bottomBlength])
-					lineageRootPosition = selectedPlacement
+				if not findPlacementOnly:
+					# extract the best placement (with the highest support)
+					selectedPlacement = sortedPlacements[0][0]
+					selectedPlacementSupport = sortedPlacements[0][1]
+					topBlength, bottomBlength, appendingBlength = sortedPlacements[0][2]
+
+					# append the lineage assignment into the selected node
+					if appendingBlength <= lineageRefsThresh and selectedPlacementSupport >= lineageRefsSupportThresh:
+						# if topBlength == 0, we already record the parent instead of the original placement, so no further processing needed
+						# if not topBlength and up[selectedPlacement]:
+						#	selectedPlacement = up[selectedPlacement]
+						# traverse upward to the top of the polytomy
+						#	while (dist[selectedPlacement] <= effectivelyNon0BLen) and (up[selectedPlacement] != None):
+						#		selectedPlacement = up[selectedPlacement]
+						tree.lineageAssignments[selectedPlacement].append([lineageRefName, bottomBlength])
+						lineageRootPosition = selectedPlacement
 
 				# update the list of possible placements for this lineage
 				tree.lineagePlacements[lineageRefName] = (sortedPlacements, lineageRootPosition)
 
-		# a node may be assigned multiple lineages
-		for node in range(len(tree.lineageAssignments)):
-			lineageAssignments = tree.lineageAssignments[node]
+		if not findPlacementOnly:
+			# a node may be assigned multiple lineages
+			for node in range(len(tree.lineageAssignments)):
+				lineageAssignments = tree.lineageAssignments[node]
 
-			# assign the list of lineages to this node
-			if len(lineageAssignments) > 0:
-				# when a node is descendant of multiple references,
-				# assign all these lineages to this node
-				if allowMultiLineagesPerNode:
-					tree.lineage[node] = "/".join(lineageRefName for lineageRefName, _ in lineageAssignments)
-				# otherwise, we assign the phylogenetically closest one to it
-				else:
-					closestLineage = lineageAssignments[0][0]
-					closetDistance = lineageAssignments[0][1]
-					for i in range(1, len(lineageAssignments)):
-						if lineageAssignments[i][1] < closetDistance:
-							closestLineage = lineageAssignments[i][0]
-							closetDistance = lineageAssignments[i][1]
-					tree.lineage[node] = closestLineage
+				# assign the list of lineages to this node
+				if len(lineageAssignments) > 0:
+					# when a node is descendant of multiple references,
+					# assign all these lineages to this node
+					if allowMultiLineagesPerNode:
+						tree.lineage[node] = "/".join(lineageRefName for lineageRefName, _ in lineageAssignments)
+					# otherwise, we assign the phylogenetically closest one to it
+					else:
+						closestLineage = lineageAssignments[0][0]
+						closetDistance = lineageAssignments[0][1]
+						for i in range(1, len(lineageAssignments)):
+							if lineageAssignments[i][1] < closetDistance:
+								closestLineage = lineageAssignments[i][0]
+								closetDistance = lineageAssignments[i][1]
+						tree.lineage[node] = closestLineage
 
 		return tree
 
@@ -11176,8 +11181,9 @@ if __name__ == "__main__":
 						file.write(tsvForNode(tree, nextNode, namesInTree[s2], featureList, namesInTree,
 											  identicalTo=namesInTree[name[nextNode]] + "_MinorSeqsClade"))
 
-					file.write(tsvForNode(tree, nextNode, namesInTree[name[nextNode]] + "_MinorSeqsClade", featureList,
-										  namesInTree))
+					file.write(
+						tsvForNode(tree, nextNode, namesInTree[name[nextNode]] + "_MinorSeqsClade", featureList,
+								   namesInTree))
 				else:
 					file.write(tsvForNode(tree, nextNode, namesInTree[name[nextNode]], featureList, namesInTree))
 				if up[nextNode] != None:
@@ -11218,7 +11224,8 @@ if __name__ == "__main__":
 
 			placementStr = ";".join(placementStrVec)
 			placementBlengthsStr = ";".join(placementBlengthsVec)
-			file.write(key + "\t" + placementStr + "\t" + placementBlengthsStr + "\t" + lineageRootPositionStr + "\n")
+			file.write(
+				key + "\t" + placementStr + "\t" + placementBlengthsStr + "\t" + lineageRootPositionStr + "\n")
 
 		# close the output file
 		file.close()
@@ -11241,7 +11248,53 @@ if __name__ == "__main__":
 
 		# ------------ write Newick treefile ------------------
 		newickString = createNewick(tree, root, binary=binaryTree, namesInTree=namesInTree, estimateMAT=False,
-									networkOutput=False, aBayesPlusOn=False, performLineageAssignmentByRefPlacement=False)
+									networkOutput=False, aBayesPlusOn=False,
+									performLineageAssignmentByRefPlacement=False)
+		file = open(outputFile + "_updatedBlengths.tree", "w")
+		file.write(newickString)
+		file.close()
+		print(f"Output Newick tree with updated branch lengths at {outputFile}_updatedBlengths.tree.")
+		# ------------ end of write Newick treefile ------------------
+		# return success
+		return tree
+
+	# Write sample placements to output file
+	# NHAN
+	def outputSamplePlacements(outputFile, tree, root):
+		# write TSV mapping from lineage to its possible placements
+		giveInternalNodeNames(tree, t1, namesInTree=namesInTree, replaceNames=False)
+		name = tree.name
+		file = open(outputFile + "_metaData_samplePlacements.tsv", "w")
+		lineagePlacements = tree.lineagePlacements
+		file.write("sample\tplacements\toptimizedBlengths\n")
+		for key in lineagePlacements:
+			placementStrVec = []
+			placementBlengthsVec = []
+			plausiblePlacements, lineageRootPosition = lineagePlacements[key]
+			for placement, support, optimizedBlengths in plausiblePlacements:
+				placementStrVec.append(f"{namesInTree[name[placement]]}:{str(support)}")
+				blengthsVec = []
+				for blength in optimizedBlengths:
+					if blength:
+						blengthsVec.append(str(blength))
+					else:
+						blengthsVec.append("0")
+				blengthsStr = "/".join(blengthsVec)
+				placementBlengthsVec.append(f"{namesInTree[name[placement]]}:({blengthsStr})")
+
+			placementStr = ";".join(placementStrVec)
+			placementBlengthsStr = ";".join(placementBlengthsVec)
+			file.write(key + "\t" + placementStr + "\t" + placementBlengthsStr + "\n")
+
+		# close the output file
+		file.close()
+
+		print(f"Output a map from lineages to their placements at {outputFile}_metaData_metaData_samplePlacements.tsv.")
+
+		# ------------ write Newick treefile ------------------
+		newickString = createNewick(tree, root, binary=binaryTree, namesInTree=namesInTree, estimateMAT=False,
+									networkOutput=False, aBayesPlusOn=False,
+									performLineageAssignmentByRefPlacement=False)
 		file = open(outputFile + "_updatedBlengths.tree", "w")
 		file.write(newickString)
 		file.close()
@@ -11265,7 +11318,7 @@ if __name__ == "__main__":
 		tree.lineages = [None] * numNodes  # don't use but need to add to reuse other functions
 
 		# 1. Find a placement for each lineage reference
-		tree = seekPlacementOfLineageRefs(tree, t1, lineageRefData, numCores)
+		tree = seekPlacementOfLineageRefs(tree, t1, lineageRefData, numCores, findPlacementOnly = False)
 
 		# 2. Annotate nodes by their lineage assignments
 		tree = annotateLineageAssignments(tree, t1)
@@ -11276,11 +11329,35 @@ if __name__ == "__main__":
 		# terminate the program
 		exit(0)
 
+	# Find placements for new samples
+	# Input: tree and new sample genomes
+	# Output: possible placements of each new sample
+	# NHAN
+	def findPlacementsForSamples(tree, t1, distances, numCores):
+		# extract sampleGenomes from distances
+		sampleGenomes = {}
+		while distances:
+			sample=distances.pop()[1]
+			sampleGenomes[sample] = data[sample]
+
+		# 1. Find a placement for each new sample
+		tree = seekPlacementOfLineageRefs(tree, t1, sampleGenomes, numCores, findPlacementOnly = True)
+
+		# Write sample placements to output file
+		outputSamplePlacements(outputFile, tree, t1)
+
+		# terminate the program
+		exit(0)
 
 	# Process linage assignments by reference genomes
 	#NHAN
 	if performLineageAssignmentByRefPlacement:
 		assignLineageByReferencePlacement(tree, t1, lineageRefData, numCores)
+
+	# If users only want to find placements for new samples
+	if findSamplePlacements:
+		from joblib import Parallel, delayed
+		findPlacementsForSamples(tree, t1, distances, numCores)
 
 	# initial EM round to estimate the time-scaled mutation rate
 	if doTimeTree and (numSamples>=minNumSamplesForMutRate):
