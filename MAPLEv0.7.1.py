@@ -79,9 +79,9 @@ parser.add_argument('--assignmentFileCSV',default="", help='give path and name t
 parser.add_argument('--assignmentFile',default="", help='Like --assignmentFileCSV but expects an alignment file in any format (as long as sequence names follow a > character as in Fasta and Maple formats).')
 parser.add_argument('--inputNexusTree',default="", help='input nexus tree file name; this is optional, and is used for lineage assignment. The nexus tree is supposed to be the output of MAPLE, so that it has alternativePlacements annotation to represent topological uncertainty.')
 parser.add_argument('--reRoot',default="", help='Re-root the input newick tree so that the specified sample/lineage is root. By default, no specified lineage/sample, so no rerooting.')
-#lineage assignment from reference genomes which are not in the tree yet
+#lineage assignment from reference genomes which are not in the tree yet - NHAN
 parser.add_argument('--lineageRefs',default="", help='give path and name to an alignment file (in MAPLE format) containing reference genomes, each represents one lineage. When using this option, option --inputTree should also be used. Then MAPLE will find the best placement for each lineage reference (note that these lineage references do not exist in the input tree). Each sample is assigned a lineage same as its closest reference parent.')
-parser.add_argument('--lineageRefsThresh',default=1.0, help='The threshold (in term of #mutation) to check whether a reference lineage genome could be considered as the parent of a subtree. Default: 1 mutation', type = float)
+parser.add_argument('--lineageRefsThresh',default=0.2, help='The threshold (in term of #mutation) to check whether a reference lineage genome could be considered as the parent of a subtree. Default: 0.2 mutation', type = float)
 parser.add_argument('--lineageRefsSupportThresh',default=0.95, help='A lineage will be assigned to a subtree only if the SPRTA support for that lineage placement exceeds this threshold. Default: 0.95', type = float)
 parser.add_argument('--allowMultiLineagesPerNode', help='When a node is selected as the best placements for multiple lineages, whether we allow assigning all of these lineages (or only the closest lineage) to the subtree. Default: assigning the closet lineage', action="store_true")
 
@@ -3547,6 +3547,7 @@ if __name__ == "__main__":
 		data=readConciseAlignment(inputFile, extractReference=False, ref=ref) #,extractNames=extractNamesFlag
 
 	# read lineage references
+	#NHAN
 	if performLineageAssignmentByRefPlacement:
 		from joblib import Parallel, delayed
 
@@ -3557,14 +3558,12 @@ if __name__ == "__main__":
 
 		# make sure users specify a tree
 		if (not os.path.isfile(inputTree)):
-			print(
-				"Input tree in newick format " + inputTree + " not found, quitting MAPLE lineage assignment. Use option --inputTree to specify a valid input tree file.")
+			print("Input tree in newick format " + inputTree + " not found, quitting MAPLE lineage assignment. Use option --inputTree to specify a valid input tree file.")
 			raise Exception("exit")
 
 		# check if file exits
 		if not os.path.isfile(lineageRefs):
-			print(
-				"Lineage reference file in Maple format " + lineageRefs + " not found.")
+			print("Lineage reference file in Maple format " + lineageRefs + " not found.")
 			raise Exception("exit")
 
 		# don't allow rerooting the tree -> the program terminates immediately after lineage assignment
@@ -10874,6 +10873,7 @@ if __name__ == "__main__":
 	# Includes support of represented nodes only if supportFor0Branches is true, otherwise smpty string.
 	def tsvForNode(tree,node,name,featureList,namesInTree,identicalTo=""):
 		dist=tree.dist
+		minorSequences=tree.minorSequences
 		stringList=[name+"\t"]
 		if identicalTo!="":
 			stringList.append(identicalTo)
@@ -10898,7 +10898,12 @@ if __name__ == "__main__":
 					#use this column to highlight which nodes could be placed (with probability above threshold) on the branch above the current node - used to highlight alternative placements of a given node on the tree.
 					elif feat=="supportTo" and identicalTo=="":
 						for iNode in range(len(feature[node])):
-							stringList.append(namesInTree[tree.name[feature[node][iNode][0]]]+":"+str(feature[node][iNode][1]))
+							#TODO TODO TODO
+							#TODO TODO TODO I added this "if" here to make sure that supportTo refers to the clade containg identical genomes, rather than to one of those genomes itself.
+							if len(minorSequences[feature[node][iNode][0]])>0:
+								stringList.append(namesInTree[tree.name[feature[node][iNode][0]]]+"_MinorSeqsClade:"+str(feature[node][iNode][1]))
+							else:
+								stringList.append(namesInTree[tree.name[feature[node][iNode][0]]]+":"+str(feature[node][iNode][1]))
 							if iNode<(len(feature[node])-1):
 								stringList.append(",")
 					# use this column to highlight which lineages could be placed (with probability above threshold) on the branch above the current node - used to highlight alternative placements of a given lineage on the tree.
@@ -10970,6 +10975,7 @@ if __name__ == "__main__":
 		return "".join(stringList)
 
 	# seek placements for a chunk that contains a subset of lineage reference genomes
+	#NHAN
 	def process_chunk(job_id, start, end, lineageRefNames, tree, t1, lineageRefData):
 		chunk_output = []
 		numSamples = 0
@@ -10980,8 +10986,7 @@ if __name__ == "__main__":
 			newPartials = probVectTerminalNode(lineageRefData[lineageRefName], None, None)
 
 			# find the best placement for the lineage reference genome
-			possiblePlacements = findBestParentForNewSample(tree, t1, newPartials, numSamples,
-															computePlacementSupportOnly=True)
+			possiblePlacements = findBestParentForNewSample(tree, t1, newPartials, numSamples, computePlacementSupportOnly=True)
 
 			# finetune the placement position
 			if len(possiblePlacements):
@@ -11003,6 +11008,7 @@ if __name__ == "__main__":
 
 
 	# seek placements for lineage reference genomes
+	#NHAN
 	def seekPlacementOfLineageRefs(tree, t1, lineageRefData, numCores):
 		#dist = tree.dist
 		#up = tree.up
@@ -11067,6 +11073,7 @@ if __name__ == "__main__":
 
 
 	# Annotate nodes by their lineage assignments
+	#NHAN
 	def annotateLineageAssignments(tree, root):
 		children = tree.children
 		lineages = tree.lineage
@@ -11104,7 +11111,7 @@ if __name__ == "__main__":
 		# return the updated tree
 		return tree
 
-
+	#NHAN
 	def defineSupportedToLineages(tree):
 		# init supportToLineages
 		numNodes = len(tree.up)
@@ -11120,6 +11127,7 @@ if __name__ == "__main__":
 
 
 	# Write lineage assignments to output file
+	#NHAN
 	def outputLineageAssignments(outputFile, tree, root):
 		tree = defineSupportedToLineages(tree)
 		# ------------ write TSV file ------------------
@@ -11248,6 +11256,7 @@ if __name__ == "__main__":
 	# Output: assignments of nodes (tip and internal nodes) to lineages
 	# 1. find a placement for each lineage reference
 	# 2. locate the subtree rooted at the placement of each lineage reference; assign all children of that subtree to that lineage
+	#NHAN
 	def assignLineageByReferencePlacement(tree, t1, lineageRefData, numCores):
 		numNodes = len(tree.up)
 		tree.lineageAssignments = [[] for _ in range(numNodes)]
@@ -11269,6 +11278,7 @@ if __name__ == "__main__":
 
 
 	# Process linage assignments by reference genomes
+	#NHAN
 	if performLineageAssignmentByRefPlacement:
 		assignLineageByReferencePlacement(tree, t1, lineageRefData, numCores)
 
