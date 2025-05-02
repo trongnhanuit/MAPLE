@@ -7940,7 +7940,9 @@ if __name__ == "__main__":
 			listofLKcosts = []
 			rootAlreadyConsidered = False
 			listOfOptBlengths = []
+			listOfPlacementTotalLhs = []
 			placementAtRoot = None
+			bestMidVector = []
 		for nodePair in bestNodes:
 			score=nodePair[1]
 			if (score>=bestLKdiff-thresholdLogLKoptimization) or (computePlacementSupportOnly and score>=bestLKdiff-thresholdLogLKoptimizationTopology):
@@ -8017,6 +8019,7 @@ if __name__ == "__main__":
 					bestScore=optimizedScore
 					bestBranchLengths=(bestTopLength,bestBottomLength,bestAppendingLength)
 					bestDiffs=diffs
+					bestMidVector = newMidVector
 				if computePlacementSupportOnly:
 					t1 = node
 					# check that the placement location is effectively different from the original node
@@ -8051,11 +8054,12 @@ if __name__ == "__main__":
 							# listOfOptBlengths.append((bestTopLength,bestBottomLength,bestAppendingLength))
 							# record the placement at root
 							placementAtRoot = (
-							topNode, optimizedScore, (bestTopLength, bestBottomLength, bestAppendingLength))
+							topNode, optimizedScore, (bestTopLength, bestBottomLength, bestAppendingLength), newMidVector)
 					elif differentNode:  # add placement to the list of legit ones
 						listofLKcosts.append(optimizedScore)
 						listOfProbableNodes.append(t1)
 						listOfOptBlengths.append((bestTopLength, bestBottomLength, bestAppendingLength))
+						listOfPlacementTotalLhs.append(newMidVector)
 
 		if computePlacementSupportOnly:
 			# add the placement at root if no placements at any of its children has been recored
@@ -8071,10 +8075,11 @@ if __name__ == "__main__":
 				# if no placements at any of its children has been recored
 				# add the placement at root
 				if addPlacementAtRoot:
-					t1, optimizedScore, bestBlengths = placementAtRoot
+					t1, optimizedScore, bestBlengths, placementTotalLh = placementAtRoot
 					listofLKcosts.append(optimizedScore)
 					listOfProbableNodes.append(t1)
 					listOfOptBlengths.append(bestBlengths)
+					listOfPlacementTotalLhs.append(placementTotalLh)
 
 			# make sure at least one placement was found
 			# because there are cases where all placements were considered as redundant
@@ -8082,6 +8087,7 @@ if __name__ == "__main__":
 				listofLKcosts.append(bestScore)
 				listOfProbableNodes.append(bestNode)
 				listOfOptBlengths.append(bestBranchLengths)
+				listOfPlacementTotalLhs.append(bestMidVector)
 
 			# Loop over all placements, if topBlength <= effectivelyNon0BLen, record the parent node instead of the original one
 			for i in range(len(listOfOptBlengths)):
@@ -8109,12 +8115,21 @@ if __name__ == "__main__":
 			possiblePlacements = []
 			for i in range(len(listofLKcosts)):
 				listofLKcosts[i] = listofLKcosts[i] / totSupport
+
+			# extract bestPlacementTotalLh
+			bestPlacementTotalLh = []
+			highest_support = 0
 			for i in range(len(listofLKcosts)):
 				if listofLKcosts[i] >= minBranchSupport:
 					possiblePlacements.append((listOfProbableNodes[i], listofLKcosts[i], listOfOptBlengths[i]))
 
+				# extract bestPlacementTotalLh
+				if listofLKcosts[i] > highest_support:
+					highest_support = listofLKcosts[i]
+					bestPlacementTotalLh = listOfPlacementTotalLhs[i]
+
 			# return possiblePlacements
-			return possiblePlacements
+			return possiblePlacements, bestPlacementTotalLh
 		else:
 			return bestNode, bestScore, bestBranchLengths, bestDiffs
 
@@ -10989,7 +11004,7 @@ if __name__ == "__main__":
 			newPartials = probVectTerminalNode(lineageRefData[lineageRefName], None, None)
 
 			# find the best placement for the lineage reference genome
-			possiblePlacements = findBestParentForNewSample(tree, t1, newPartials, numSamples, computePlacementSupportOnly=True)
+			possiblePlacements, bestPlacementTotalLh = findBestParentForNewSample(tree, t1, newPartials, numSamples, computePlacementSupportOnly=True)
 
 			# finetune the placement position
 			if len(possiblePlacements):
@@ -11000,7 +11015,7 @@ if __name__ == "__main__":
 				print(f"Something went wrong: possiblePlacements for {lineageRefName} is empty")
 				raise Exception("exit")
 
-			chunk_output.append((lineageRefName, sortedPlacements))
+			chunk_output.append((lineageRefName, sortedPlacements, bestPlacementTotalLh))
 
 			# update progress
 			numSamples += 1
@@ -11066,7 +11081,7 @@ if __name__ == "__main__":
 		)
 
 		for chunk_output in results:
-			for lineageRefName, sortedPlacements in chunk_output:
+			for lineageRefName, sortedPlacements, bestPlacementTotalLh in chunk_output:
 				# extract the best placement (with the highest support)
 				selectedPlacement = sortedPlacements[0][0]
 				# conduct lineage assignment if needed
@@ -11095,11 +11110,8 @@ if __name__ == "__main__":
 					# extract sample genome
 					samplePartials = probVectTerminalNode(lineageRefData[lineageRefName], None, None)
 
-					# extract partial of the placement that separate the sample from the placement
-					placementPartials = probVect[selectedPlacement]
-
 					# extract list of mutations
-					mutations_list = extractMutations(placementPartials, samplePartials)
+					mutations_list = extractMutations(bestPlacementTotalLh, samplePartials)
 
 					# update the list of possible placements for this sample
 					tree.lineagePlacements[lineageRefName] = (sortedPlacements, mutations_list)
