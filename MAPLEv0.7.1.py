@@ -86,6 +86,8 @@ parser.add_argument('--lineageRefsSupportThresh',default=0.95, help='A lineage w
 parser.add_argument('--allowMultiLineagesPerNode', help='When a node is selected as the best placements for multiple lineages, whether we allow assigning all of these lineages (or only the closest lineage) to the subtree. Default: assigning the closet lineage', action="store_true")
 # find placements (in an input tree) for new samples (without changing the input tree ~ find placements only) - NHAN
 parser.add_argument('--findSamplePlacements', help='Find placements (in an input tree) for new samples (without changing the input tree ~ find placements only)', action="store_true")
+parser.add_argument('--threshMutation',default=0.01, help='Threshold for detecting a mutation from an entry O to a new nucleotide X: if the probability of X in O < threshMutation, the change is counted as a mutation. Default: 0.01', type = float)
+
 
 #rarer options
 parser.add_argument("--defaultBLen",help="Default length of branches, for example when the input tree has no branch length information.",  type=float, default=0.000033)
@@ -141,6 +143,7 @@ lineageRefsSupportThresh = args.lineageRefsSupportThresh
 allowMultiLineagesPerNode = args.allowMultiLineagesPerNode
 performLineageAssignmentByRefPlacement = (lineageRefs != "")
 findSamplePlacements = args.findSamplePlacements
+threshMutation = args.threshMutation
 allowedFails=args.allowedFails
 allowedFailsTopology=args.allowedFailsTopology
 model=args.model
@@ -11034,13 +11037,24 @@ if __name__ == "__main__":
 		while True:
 			if entry1[0] != entry2[0] and entry1[0] < 5 and entry2[0] < 5:
 				if entry1[0] == 4:
-					mutations_list.append((entry2[1], entry2[0], pos + 1))
+					mutations_list.append((entry2[1], entry2[0], pos + 1, None))
 				elif entry2[0] == 4:
-					mutations_list.append((entry1[0], entry1[1], pos + 1))
+					mutations_list.append((entry1[0], entry1[1], pos + 1, None))
 				else:
-					mutations_list.append((entry1[0], entry2[0], pos + 1))
+					mutations_list.append((entry1[0], entry2[0], pos + 1, None))
 				pos += 1
 			else:
+				# handle special case when entry1 is O
+				if entry1[0] != entry2[0] and entry1[0] == 6 and entry2[0] < 5:
+					# extract the nucleotide of entry2
+					entry2_nuc = entry2[0]
+					if entry2[0] == 4:
+						entry2_nuc = entry1[1]
+					
+					# only consider cases where the probability of the nucleotide in the sample is lower than threshMutation
+					if entry1[-1][entry2_nuc] < threshMutation:
+						mutations_list.append((entry1[0], entry2_nuc, pos + 1, entry1[-1]))
+
 				if (entry1[0] == 4 or entry1[0] == 5) and (entry2[0] == 4 or entry2[0] == 5):
 					pos = min(entry1[1], entry2[1])
 				else:
@@ -11327,7 +11341,7 @@ if __name__ == "__main__":
 	# Write sample placements to output file
 	# NHAN
 	def outputSamplePlacements(outputFile, tree, root):
-		nucletides = "ACGT"
+		nucletides = "ACGTRNO"
 		# write TSV mapping from lineage to its possible placements
 		giveInternalNodeNames(tree, t1, namesInTree=namesInTree, replaceNames=False)
 		name = tree.name
@@ -11358,8 +11372,19 @@ if __name__ == "__main__":
 
 			# convert list of mutations into a string
 			mutationStrVec = []
-			for from_state, to_state, position in mutations_list:
-				mutationStrVec.append(f"{nucletides[from_state]}{position}{nucletides[to_state]}")
+			for from_state, to_state, position, prob_nuc in mutations_list:
+				# case when from_state = O => return O(prob_A/prob_C/prob_G/prob_T)<pos><to_state>
+				if from_state == 6:
+					# normalize the probabilities over all nucleotides
+					prob_nuc_vec = []
+					total_prob = sum(prob_nuc)
+					for i in range(len(prob_nuc)):
+						prob_nuc_vec.append(f"{prob_nuc[i]/total_prob:.6f}")
+					prob_nuc_str = "/".join(prob_nuc_vec)
+					mutationStrVec.append(f"{nucletides[from_state]}({prob_nuc_str}){position}{nucletides[to_state]}")
+				# otherwise, => return <from_state><pos><to_state>
+				else:
+					mutationStrVec.append(f"{nucletides[from_state]}{position}{nucletides[to_state]}")
 			mutationStr = ";".join(mutationStrVec)
 
 			file.write(key + "\t" + placementStr + "\t" + placementBlengthsStr + "\t" + mutationStr + "\n")
