@@ -11015,8 +11015,9 @@ if __name__ == "__main__":
 				sortedPlacements = sorted(possiblePlacements, key=lambda x: x[1], reverse=True)
 
 			else:
-				print(f"Something went wrong: possiblePlacements for {lineageRefName} is empty")
-				raise Exception("exit")
+				sortedPlacements = []
+				bestPlacementTotalLh = []
+				print(f"WARNING: possiblePlacements for {lineageRefName} is empty. It could be because there is no placement whose support is higher than minBranchSupport ({minBranchSupport}). You can change this threshold via '--minBranchSupport <NUM>'.")
 
 			chunk_output.append((lineageRefName, sortedPlacements, bestPlacementTotalLh))
 
@@ -11101,31 +11102,38 @@ if __name__ == "__main__":
 				# conduct lineage assignment if needed
 				if not findPlacementOnly:
 					lineageRootPosition = None
-					# extract support and optimized blengths of the best placement
-					selectedPlacementSupport = sortedPlacements[0][1]
-					topBlength, bottomBlength, appendingBlength = sortedPlacements[0][2]
 
-					# append the lineage assignment into the selected node
-					if appendingBlength <= lineageRefsThresh and selectedPlacementSupport >= lineageRefsSupportThresh:
-						# if topBlength == 0, we already record the parent instead of the original placement, so no further processing needed
-						# if not topBlength and up[selectedPlacement]:
-						#	selectedPlacement = up[selectedPlacement]
-						# traverse upward to the top of the polytomy
-						#	while (dist[selectedPlacement] <= effectivelyNon0BLen) and (up[selectedPlacement] != None):
-						#		selectedPlacement = up[selectedPlacement]
-						tree.lineageAssignments[selectedPlacement].append([lineageRefName, bottomBlength])
-						lineageRootPosition = selectedPlacement
+					# avoid cases where all possible placements have low supports
+					if len(sortedPlacements) > 0:
+						# extract support and optimized blengths of the best placement
+						selectedPlacementSupport = sortedPlacements[0][1]
+						topBlength, bottomBlength, appendingBlength = sortedPlacements[0][2]
+
+						# append the lineage assignment into the selected node
+						if appendingBlength <= lineageRefsThresh and selectedPlacementSupport >= lineageRefsSupportThresh:
+							# if topBlength == 0, we already record the parent instead of the original placement, so no further processing needed
+							# if not topBlength and up[selectedPlacement]:
+							#	selectedPlacement = up[selectedPlacement]
+							# traverse upward to the top of the polytomy
+							#	while (dist[selectedPlacement] <= effectivelyNon0BLen) and (up[selectedPlacement] != None):
+							#		selectedPlacement = up[selectedPlacement]
+							tree.lineageAssignments[selectedPlacement].append([lineageRefName, bottomBlength])
+							lineageRootPosition = selectedPlacement
 
 					# update the list of possible placements for this lineage
 					tree.lineagePlacements[lineageRefName] = (sortedPlacements, lineageRootPosition)
 
 				# otherwise, extract the list of mutations that separate the sample from the placement
 				else:
-					# extract sample genome
-					samplePartials = probVectTerminalNode(lineageRefData[lineageRefName], None, None)
+					# avoid cases where all possible placements have low supports
+					if len(sortedPlacements) > 0:
+						# extract sample genome
+						samplePartials = probVectTerminalNode(lineageRefData[lineageRefName], None, None)
 
-					# extract list of mutations
-					mutations_list = extractMutations(bestPlacementTotalLh, samplePartials)
+						# extract list of mutations
+						mutations_list = extractMutations(bestPlacementTotalLh, samplePartials)
+					else:
+						mutations_list = []
 
 					# update the list of possible placements for this sample
 					tree.lineagePlacements[lineageRefName] = (sortedPlacements, mutations_list)
@@ -11214,6 +11222,7 @@ if __name__ == "__main__":
 	# Write lineage assignments to output file
 	#NHAN
 	def outputLineageAssignments(outputFile, tree, root):
+		warning_msg = f"WARNING: empty possiblePlacements. It could be because there is no placement whose support is higher than minBranchSupport ({minBranchSupport}). You can change this threshold via '--minBranchSupport <NUM>'."
 		tree = defineSupportedToLineages(tree)
 		# ------------ write TSV file ------------------
 		giveInternalNodeNames(tree, t1, namesInTree=namesInTree, replaceNames=False)
@@ -11303,6 +11312,11 @@ if __name__ == "__main__":
 				lineageRootPositionStr = namesInTree[name[lineageRootPosition]]
 
 			placementStr = ";".join(placementStrVec)
+
+			# add a warning if there is no possible placements
+			if len(plausiblePlacements) == 0:
+				placementStr = warning_msg
+
 			placementBlengthsStr = ";".join(placementBlengthsVec)
 			file.write(
 				key + "\t" + placementStr + "\t" + placementBlengthsStr + "\t" + lineageRootPositionStr + "\n")
@@ -11341,6 +11355,7 @@ if __name__ == "__main__":
 	# Write sample placements to output file
 	# NHAN
 	def outputSamplePlacements(outputFile, tree, root):
+		warning_msg = f"WARNING: empty possiblePlacements. It could be because there is no placement whose support is higher than minBranchSupport ({minBranchSupport}). You can change this threshold via '--minBranchSupport <NUM>'."
 		nucletides = "ACGTRNO"
 		# write TSV mapping from lineage to its possible placements
 		giveInternalNodeNames(tree, t1, namesInTree=namesInTree, replaceNames=False)
@@ -11369,6 +11384,10 @@ if __name__ == "__main__":
 
 			placementStr = ";".join(placementStrVec)
 			placementBlengthsStr = ";".join(placementBlengthsVec)
+
+			# add a warning if there is no possible placements
+			if len(plausiblePlacements) == 0:
+				placementStr = warning_msg
 
 			# convert list of mutations into a string
 			mutationStrVec = []
