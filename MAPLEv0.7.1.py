@@ -11097,14 +11097,14 @@ if __name__ == "__main__":
 
 		for chunk_output in results:
 			for lineageRefName, sortedPlacements, bestPlacementTotalLh in chunk_output:
-				# extract the best placement (with the highest support)
-				selectedPlacement = sortedPlacements[0][0]
 				# conduct lineage assignment if needed
 				if not findPlacementOnly:
 					lineageRootPosition = None
 
 					# avoid cases where all possible placements have low supports
 					if len(sortedPlacements) > 0:
+						# extract the best placement (with the highest support)
+						selectedPlacement = sortedPlacements[0][0]
 						# extract support and optimized blengths of the best placement
 						selectedPlacementSupport = sortedPlacements[0][1]
 						topBlength, bottomBlength, appendingBlength = sortedPlacements[0][2]
